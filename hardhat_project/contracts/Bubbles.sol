@@ -1,0 +1,224 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+contract Bubbles {
+    address payable public constant CREATOR = payable(0x525eE261f2E22E14a10C699A9A11BB521Bd8a2C5);
+    
+    // Scale-down fees: 10x cheaper than original (about 3 cents on Base L2)
+    uint256 public constant ACTION_FEE = 0.00001 ether; 
+    uint256 public constant CREATOR_FEE_PERCENT = 5;
+    uint256 public constant REWARD_FEE_PERCENT = 50;
+
+    // Connection expiry duration: 1 day
+    uint256 public constant CONNECTION_LIFETIME = 1 days;
+
+    struct Connection {
+        uint64 lastNurturedAt;
+        uint16 boostMultiplier; // 100 = 1.0x, 200 = 2.0x, max 300 = 3.0x
+        bool active;
+    }
+
+    mapping(uint64 => address) public nodes;
+    // fromNode => toNode => isPending
+    mapping(uint64 => mapping(uint64 => bool)) public pendingRequests;
+    mapping(uint64 => mapping(uint64 => uint256)) public pendingRequestFees;
+    mapping(uint64 => uint32) public connectionCounts;
+
+    // Undirected connection registry
+    mapping(bytes32 => Connection) public connections;
+
+    event NodePlaced(uint64 indexed nodeKey, address indexed owner, int32 x, int32 y);
+    event ConnectionRequested(uint64 indexed fromNode, uint64 indexed toNode);
+    event ConnectionApproved(uint64 indexed fromNode, uint64 indexed toNode);
+    event ConnectionNurtured(uint64 indexed fromNode, uint64 indexed toNode, uint256 lastNurturedAt);
+    event ConnectionBoosted(uint64 indexed fromNode, uint64 indexed toNode, uint256 boostMultiplier, uint256 lastNurturedAt);
+
+    function encodeCoordinate(int32 x, int32 y) public pure returns (uint64) {
+        return (uint64(uint32(x)) << 32) | uint64(uint32(y));
+    }
+
+    function decodeCoordinate(uint64 key) public pure returns (int32 x, int32 y) {
+        x = int32(uint32(key >> 32));
+        y = int32(uint32(key));
+    }
+
+    function abs(int32 x) private pure returns (int32) {
+        return x >= 0 ? x : -x;
+    }
+
+    // Undirected key generation
+    function getConnKey(uint64 a, uint64 b) public pure returns (bytes32) {
+        if (a < b) {
+            return keccak256(abi.encodePacked(a, b));
+        } else {
+            return keccak256(abi.encodePacked(b, a));
+        }
+    }
+
+    function calculateConnectionFee(uint64 fromNode, uint64 toNode) public view returns (uint256) {
+        uint256 baseFee = ACTION_FEE;
+        
+        // 1. Connection Premium
+        uint32 fromConns = connectionCounts[fromNode];
+        uint32 toConns = connectionCounts[toNode];
+        uint256 connectionPremium = 0;
+        if (toConns > fromConns) {
+            connectionPremium = uint256(toConns - fromConns) * 0.000005 ether; // 10x cheaper premium
+        }
+
+        // 2. Distance Premium
+        (int32 x1, int32 y1) = decodeCoordinate(fromNode);
+        (int32 x2, int32 y2) = decodeCoordinate(toNode);
+        uint256 distance = uint256(uint32(abs(x2 - x1) + abs(y2 - y1)));
+        uint256 distancePremium = distance * 0.000001 ether; // 10x cheaper premium
+
+        return baseFee + connectionPremium + distancePremium;
+    }
+
+    function calculateNurtureFee(uint64 fromNode, uint64 toNode) public pure returns (uint256) {
+        // Base nurture fee = 0.000002 ether
+        // Distance premium = 0.0000002 ether per unit
+        (int32 x1, int32 y1) = decodeCoordinate(fromNode);
+        (int32 x2, int32 y2) = decodeCoordinate(toNode);
+        uint256 distance = uint256(uint32(abs(x2 - x1) + abs(y2 - y1)));
+        return 0.000002 ether + (distance * 0.0000002 ether);
+    }
+
+    // Changed to pure since it doesn't read state
+    function calculateBoostFee(uint64 fromNode, uint64 toNode) public pure returns (uint256) {
+        // Base boost fee = 0.000005 ether
+        // Distance premium = 0.0000005 ether per unit
+        (int32 x1, int32 y1) = decodeCoordinate(fromNode);
+        (int32 x2, int32 y2) = decodeCoordinate(toNode);
+        uint256 distance = uint256(uint32(abs(x2 - x1) + abs(y2 - y1)));
+        return 0.000005 ether + (distance * 0.0000005 ether);
+    }
+
+    function isConnectionActive(uint64 fromNode, uint64 toNode) public view returns (bool) {
+        bytes32 key = getConnKey(fromNode, toNode);
+        if (!connections[key].active) return false;
+        return block.timestamp <= connections[key].lastNurturedAt + CONNECTION_LIFETIME;
+    }
+
+    function placeNode(int32 x, int32 y) external payable {
+        require(msg.value == ACTION_FEE, "Incorrect fee");
+        uint64 nodeKey = encodeCoordinate(x, y);
+        require(nodes[nodeKey] == address(0), "Location occupied");
+
+        nodes[nodeKey] = msg.sender;
+
+        // Pay creator
+        uint256 creatorFee = (ACTION_FEE * CREATOR_FEE_PERCENT) / 100;
+        CREATOR.transfer(creatorFee);
+
+        emit NodePlaced(nodeKey, msg.sender, x, y);
+    }
+
+    function requestConnection(uint64 fromNode, uint64 toNode) external payable {
+        uint256 requiredFee = calculateConnectionFee(fromNode, toNode);
+        require(msg.value >= requiredFee, "Insufficient fee");
+        require(nodes[fromNode] == msg.sender, "Not fromNode owner");
+        require(nodes[toNode] != address(0), "toNode does not exist");
+        require(!pendingRequests[fromNode][toNode], "Request already pending");
+
+        pendingRequests[fromNode][toNode] = true;
+        pendingRequestFees[fromNode][toNode] = msg.value;
+
+        // Pay creator
+        uint256 creatorFee = (msg.value * CREATOR_FEE_PERCENT) / 100;
+        CREATOR.transfer(creatorFee);
+
+        emit ConnectionRequested(fromNode, toNode);
+    }
+
+    function approveConnection(uint64 fromNode, uint64 toNode) external {
+        require(nodes[toNode] == msg.sender, "Not toNode owner");
+        require(pendingRequests[fromNode][toNode], "No pending request");
+
+        pendingRequests[fromNode][toNode] = false;
+        
+        uint256 feePaid = pendingRequestFees[fromNode][toNode];
+        pendingRequestFees[fromNode][toNode] = 0;
+
+        connectionCounts[fromNode]++;
+        connectionCounts[toNode]++;
+
+        // Register the active connection
+        bytes32 key = getConnKey(fromNode, toNode);
+        connections[key] = Connection({
+            lastNurturedAt: uint64(block.timestamp),
+            boostMultiplier: 100, // starting at 1.0x
+            active: true
+        });
+
+        // Pay reward to the target node owner
+        uint256 rewardFee = (feePaid * REWARD_FEE_PERCENT) / 100;
+        payable(msg.sender).transfer(rewardFee);
+
+        emit ConnectionApproved(fromNode, toNode);
+    }
+
+    function nurtureConnection(uint64 fromNode, uint64 toNode) external payable {
+        bytes32 key = getConnKey(fromNode, toNode);
+        require(connections[key].active, "Connection does not exist");
+        
+        uint256 fee = calculateNurtureFee(fromNode, toNode);
+        require(msg.value >= fee, "Insufficient nurture fee");
+        
+        connections[key].lastNurturedAt = uint64(block.timestamp);
+        
+        // Distribute fee
+        uint256 creatorFee = (msg.value * CREATOR_FEE_PERCENT) / 100;
+        CREATOR.transfer(creatorFee);
+        
+        uint256 remaining = msg.value - creatorFee;
+        address ownerA = nodes[fromNode];
+        address ownerB = nodes[toNode];
+        
+        if (ownerA == ownerB) {
+            payable(ownerA).transfer(remaining);
+        } else {
+            uint256 half = remaining / 2;
+            payable(ownerA).transfer(half);
+            payable(ownerB).transfer(remaining - half);
+        }
+
+        emit ConnectionNurtured(fromNode, toNode, block.timestamp);
+    }
+
+    function boostConnection(uint64 fromNode, uint64 toNode) external payable {
+        bytes32 key = getConnKey(fromNode, toNode);
+        require(connections[key].active, "Connection does not exist");
+        
+        uint256 fee = calculateBoostFee(fromNode, toNode);
+        require(msg.value >= fee, "Insufficient boost fee");
+        
+        Connection storage conn = connections[key];
+        
+        // Increment multiplier up to 300 (3x)
+        if (conn.boostMultiplier < 300) {
+            conn.boostMultiplier += 50;
+        }
+        
+        // Reset decay timer upon boosting
+        conn.lastNurturedAt = uint64(block.timestamp);
+        
+        // Distribute fee
+        uint256 creatorFee = (msg.value * CREATOR_FEE_PERCENT) / 100;
+        CREATOR.transfer(creatorFee);
+        
+        uint256 remaining = msg.value - creatorFee;
+        address ownerA = nodes[fromNode];
+        address ownerB = nodes[toNode];
+        
+        if (ownerA == ownerB) {
+            payable(ownerA).transfer(remaining);
+        } else {
+            uint256 half = remaining / 2;
+            payable(ownerA).transfer(half);
+            payable(ownerB).transfer(remaining - half);
+        }
+
+        emit ConnectionBoosted(fromNode, toNode, conn.boostMultiplier, block.timestamp);
+    }
+}
