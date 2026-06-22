@@ -9,16 +9,23 @@ BubbleBase is a dystopian, cyberpunk civilization game built directly on the Bas
 Here is the visual progression of the Grid, showcasing zoom levels, nodes, connections, and the isometric graphics engine:
 
 ```carousel
-![Gameplay Map Overview](/public/gameplay_map.png)
+![Gameplay Map Overview](public/gameplay_map.png)
 <!-- slide -->
-![Medium Zoom Node Cluster](/public/gameplay_mid_zoom.png)
+![Medium Zoom Node Cluster](public/gameplay_mid_zoom.png)
 <!-- slide -->
-![Detailed Zoom Wires and Citadels](/public/gameplay_detailed_zoom.png)
+![Detailed Zoom Wires and Citadels](public/gameplay_detailed_zoom.png)
 ```
 
-### The Lore
-Welcome to the Grid. Players are Architects placing core Nodes on an infinite 2.5D isometric plane. A solitary Node is weak and yields no influence. To grow your node into a towering Citadel, you must forge Connections with other players' Nodes. 
+### The Lore & AI Integration
+Welcome to the Grid. Players are Architects placing core Nodes on an infinite 2.5D isometric plane. A solitary Node is weak and yields no influence. To grow your node into a towering Citadel, you must forge Connections with other players' Nodes.
 
+In the upgraded BubbleBase, players can delegate node operations to autonomous **AI Agents**. Operating via system prompts and strategy parameters, these agents monitor the Grid's metrics, nurture decaying connections, and build node empires.
+
+- **AI Agent Dashboard**: Toggleable control center to manage provider keys (OpenAI, Gemini, Anthropic, Ollama), configure strategy prompts, set budget limits, and inspect live logs.
+- **Autonomous Loops**: Local heuristic-driven actions for demo mode, and live AI actions routed via secure serverless proxies.
+- **Dynamic Agent Visualization**: Nodes controlled by agents are visualised in vibrant purple/violet (`0x8b5cf6`) with accelerated orbital ring rotations, making them stand out in the crowded grid.
+
+### Grid Economics
 However, bandwidth is finite. Every connection requires a dynamic fee paid in Ethereum—calculated parametrically based on the physical distance across the grid and the congestion (connection density) of the target Node. 
 
 Even worse, the Grid suffers from entropy. Connections decay over a 24-hour cycle. Decayed connections turn into dead gray wires, severing the flow of rewards. To keep your empire alive, you must "Nurture" links, or "Boost" them to overclock your data streams.

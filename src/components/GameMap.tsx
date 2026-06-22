@@ -29,6 +29,7 @@ interface GameMapProps {
   onPlaceNode: (x: number, y: number) => void;
   onConnectNodes: (fromId: string, toId: string) => void;
   pendingTx: boolean;
+  agentNodeIds?: Set<string>;
 }
 
 const ISO_PITCH = 0.6;
@@ -152,6 +153,7 @@ export default function GameMap({
   onPlaceNode,
   onConnectNodes,
   pendingTx,
+  agentNodeIds = new Set(),
 }: GameMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<PIXI.Application | null>(null);
@@ -165,12 +167,13 @@ export default function GameMap({
     selectedNodeId,
     userAddress,
     pendingTx,
+    agentNodeIds,
   });
 
   useEffect(() => {
-    stateRef.current = { nodes, connections, selectedNodeId, userAddress, pendingTx };
+    stateRef.current = { nodes, connections, selectedNodeId, userAddress, pendingTx, agentNodeIds };
     if (rebuildRef.current) rebuildRef.current();
-  }, [nodes, connections, userAddress]);
+  }, [nodes, connections, userAddress, agentNodeIds]);
 
   useEffect(() => {
     stateRef.current.selectedNodeId = selectedNodeId;
@@ -389,14 +392,15 @@ export default function GameMap({
       };
 
       const updateVisualStates = () => {
-        const { selectedNodeId: currentSelectedId, userAddress: currentUserAddr } = stateRef.current;
+        const { selectedNodeId: currentSelectedId, userAddress: currentUserAddr, agentNodeIds: currentAgentNodeIds } = stateRef.current;
 
         nodeContainersMap.forEach((nodeData, id) => {
           const isSelected = id === currentSelectedId;
           const isHovered = id === hoveredNodeId;
           const isUserOwned = nodeData.owner.toLowerCase() === currentUserAddr?.toLowerCase();
+          const isAgentOwned = currentAgentNodeIds?.has(id);
 
-          const activeColor = isSelected ? 0xf59e0b : isHovered ? 0xffffff : isUserOwned ? 0x10b881 : 0x3b82f6;
+          const activeColor = isSelected ? 0xf59e0b : isHovered ? 0xffffff : isUserOwned ? 0x10b881 : isAgentOwned ? 0x8b5cf6 : 0x3b82f6;
 
           nodeData.groundPlate.tint = activeColor;
           nodeData.spire.tint = activeColor;
@@ -431,6 +435,7 @@ export default function GameMap({
           connections: currentConns,
           selectedNodeId: currentSelectedId,
           userAddress: currentUserAddr,
+          agentNodeIds: currentAgentNodeIds,
         } = stateRef.current;
 
         // Destroy old containers to release GPU memory and event listeners
@@ -447,8 +452,9 @@ export default function GameMap({
         currentNodes.forEach((node) => {
           const isUserOwned = node.owner.toLowerCase() === currentUserAddr?.toLowerCase();
           const isSelected = node.id === currentSelectedId;
+          const isAgentOwned = currentAgentNodeIds?.has(node.id);
           const radius = 40 + Math.min(node.connectionsCount * 12, 100);
-          const fillColor = isSelected ? 0xf59e0b : isUserOwned ? 0x10b881 : 0x3b82f6;
+          const fillColor = isSelected ? 0xf59e0b : isUserOwned ? 0x10b881 : isAgentOwned ? 0x8b5cf6 : 0x3b82f6;
           
           const p = toIso(node.x * 100, node.y * 100, 0);
           fieldsGraphics.ellipse(p.x, p.y, radius, radius * ISO_PITCH);
@@ -527,8 +533,9 @@ export default function GameMap({
 
         // Build 3D Parametric Spire Nodes
         currentNodes.forEach((node) => {
+          const isAgentOwned = currentAgentNodeIds?.has(node.id);
           const color = node.id === currentSelectedId ? 0xf59e0b : 
-                       (node.owner.toLowerCase() === currentUserAddr?.toLowerCase() ? 0x10b881 : 0x3b82f6);
+                       (node.owner.toLowerCase() === currentUserAddr?.toLowerCase() ? 0x10b881 : (isAgentOwned ? 0x8b5cf6 : 0x3b82f6));
 
           const seed = parseInt(node.id.substring(node.id.length - 8), 16) || Math.abs(node.x * 17 + node.y * 31);
           const rand = (s: number) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
@@ -748,7 +755,7 @@ export default function GameMap({
             connectionsCount: node.connectionsCount,
             owner: node.owner,
             bobSpeed: 1.2 + r4 * 0.8,
-            spinSpeed: 0.01 + r3 * 0.015,
+            spinSpeed: (0.01 + r3 * 0.015) * (isAgentOwned ? 2.5 : 1.0),
           });
         });
 

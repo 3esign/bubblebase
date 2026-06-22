@@ -17,32 +17,54 @@ import { GameNode, GameConnection } from "../components/GameMap";
 // Dynamically import GameMap to avoid SSR issues with PixiJS/Canvas
 const GameMap = dynamic(() => import("../components/GameMap"), { ssr: false });
 
+import { AgentDashboard } from "../components/AgentDashboard";
+import { useAgentLoop, AgentConfig } from "../hooks/useAgentLoop";
+
+export const MOCK_AGENT_ADDRESSES = [
+  "0x111111125434b319222222222222222222222222",
+  "0x222222225434b319222222222222222222222222",
+  "0x333333335434b319222222222222222222222222",
+  "0x444444445434b319222222222222222222222222",
+  "0x555555555434b319222222222222222222222222",
+  "0x666666665434b319222222222222222222222222"
+];
+
 // Mock data generator for Demo Mode (with decayed and boosted connections)
 const generateMockData = () => {
   const nodes: GameNode[] = [];
   const connections: GameConnection[] = [];
-  const clusterCenters = Array.from({ length: 25 }, () => ({
-    x: Math.floor(Math.random() * 40) - 20,
-    y: Math.floor(Math.random() * 40) - 20,
+  const clusterCenters = Array.from({ length: 60 }, () => ({
+    x: Math.floor(Math.random() * 80) - 40,
+    y: Math.floor(Math.random() * 80) - 40,
   }));
 
   const ownerAddressMock1 = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
   const ownerAddressMock2 = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
   const ownerAddressMock3 = "0x90F79bf6EB2c4f870365E785982E1f101E93b906";
 
+  const allAddresses = [
+    ownerAddressMock1,
+    ownerAddressMock2,
+    ownerAddressMock3,
+    ...MOCK_AGENT_ADDRESSES
+  ];
+
   clusterCenters.forEach((center, idx) => {
-    const numNodes = Math.floor(Math.random() * 12) + 5; // 5 to 17 nodes per cluster
+    const numNodes = Math.floor(Math.random() * 8) + 4; // 4 to 11 nodes per cluster (total ~350+ nodes)
     const clusterNodes: GameNode[] = [];
 
     // Base node for center
     const centerKey = encodeCoordinate(center.x, center.y).toString();
     if (nodes.some((n) => n.id === centerKey)) return;
 
+    // Pick owner from all including agents
+    const owner = allAddresses[idx % allAddresses.length];
+
     const centerNode: GameNode = {
       id: centerKey,
       x: center.x,
       y: center.y,
-      owner: idx % 3 === 0 ? ownerAddressMock1 : (idx % 3 === 1 ? ownerAddressMock2 : ownerAddressMock3),
+      owner,
       connectionsCount: 0,
     };
     nodes.push(centerNode);
@@ -51,18 +73,20 @@ const generateMockData = () => {
     // Nodes around center
     for (let i = 0; i < numNodes; i++) {
       const angle = (i / numNodes) * Math.PI * 2;
-      const dist = Math.floor(Math.random() * 4) + 1; // 1 to 4 grid distance
+      const dist = Math.floor(Math.random() * 3) + 1; // 1 to 3 grid distance
       const x = center.x + Math.round(Math.cos(angle) * dist);
       const y = center.y + Math.round(Math.sin(angle) * dist);
 
       const key = encodeCoordinate(x, y).toString();
       if (nodes.some((n) => n.id === key)) continue;
 
+      const subOwner = allAddresses[Math.floor(Math.random() * allAddresses.length)];
+
       const node: GameNode = {
         id: key,
         x,
         y,
-        owner: Math.random() > 0.4 ? ownerAddressMock2 : ownerAddressMock3,
+        owner: subOwner,
         connectionsCount: 0,
       };
       nodes.push(node);
@@ -72,7 +96,7 @@ const generateMockData = () => {
     // Connect nodes within cluster
     for (let i = 0; i < clusterNodes.length; i++) {
       const fromNode = clusterNodes[i];
-      const numConns = Math.floor(Math.random() * 3) + 1;
+      const numConns = Math.floor(Math.random() * 2) + 1;
       for (let j = 0; j < numConns; j++) {
         const targetNode = clusterNodes[Math.floor(Math.random() * clusterNodes.length)];
         if (targetNode.id !== fromNode.id) {
@@ -123,6 +147,14 @@ export default function Home() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [targetNodeId, setTargetNodeId] = useState<string | null>(null);
 
+  // Helper to determine active wallet address (mock or real)
+  const activeUserAddress = useMemo(() => {
+    if (isDemoMode) {
+      return "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"; // First hardhat account default mock
+    }
+    return userAddress || null;
+  }, [isDemoMode, userAddress]);
+
   // Ghost coordinate state for placing new node
   const [placementCoords, setPlacementCoords] = useState<{ x: number; y: number } | null>(null);
 
@@ -132,6 +164,167 @@ export default function Home() {
 
   // Clock tick trigger state to update decay timers in UI every second
   const [clockTick, setClockTick] = useState(0);
+
+  // Agent System Config state
+  const [agentConfig, setAgentConfig] = useState<AgentConfig>({
+    provider: 'demo',
+    apiKey: '',
+    model: 'local-heuristic',
+    systemPrompt: `You are BubbleBase's automated L2 network agent.
+Your objective is to maximize resource yield and connect nodes effectively.
+Rules:
+- Place nodes to secure strategic positions next to other player hubs.
+- Nurture connections whose timers have decayed or are close to 0h remaining.
+- Boost high-density links to overclock data yields when connection count is large.
+- Hold when network is stable to preserve delegate funds.`,
+    strategy: 'expansionist',
+    risk: 50,
+    frequency: 10,
+  });
+
+  // Callbacks for useAgentLoop
+  const agentPlaceNode = async (x: number, y: number) => {
+    const key = encodeCoordinate(x, y).toString();
+    if (isDemoMode) {
+      const newNode: GameNode = {
+        id: key,
+        x,
+        y,
+        owner: activeUserAddress!,
+        connectionsCount: 0,
+      };
+      setNodes((prev) => [...prev, newNode]);
+      return true;
+    } else {
+      if (!isConnected) return false;
+      try {
+        setTxMessage("[Agent Action] Placing Node...");
+        setPendingTx(true);
+        const tx = await writeContractAsync({
+          address: contractAddress as `0x${string}`,
+          abi: BUBBLES_ABI,
+          functionName: "placeNode",
+          args: [x, y],
+          value: parseEther("0.00001"),
+        });
+        return true;
+      } catch (e) {
+        console.error(e);
+        return false;
+      } finally {
+        setPendingTx(false);
+        setTxMessage("");
+      }
+    }
+  };
+
+  const agentNurtureConnection = async (fromId: string, toId: string) => {
+    if (isDemoMode) {
+      setConnections((prev) =>
+        prev.map((c) =>
+          (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId)
+            ? { ...c, lastNurturedAt: Math.floor(Date.now() / 1000) }
+            : c
+        )
+      );
+      return true;
+    } else {
+      if (!isConnected || !publicClient) return false;
+      try {
+        setTxMessage("[Agent Action] Nurturing Link...");
+        setPendingTx(true);
+        const fee = await publicClient.readContract({
+          address: contractAddress as `0x${string}`,
+          abi: BUBBLES_ABI,
+          functionName: "calculateNurtureFee",
+          args: [BigInt(fromId), BigInt(toId)],
+        }) as bigint;
+
+        await writeContractAsync({
+          address: contractAddress as `0x${string}`,
+          abi: BUBBLES_ABI,
+          functionName: "nurtureConnection",
+          args: [BigInt(fromId), BigInt(toId)],
+          value: fee,
+        });
+        setTimeout(() => loadLiveChainData(), 1500);
+        return true;
+      } catch (e) {
+        console.error(e);
+        return false;
+      } finally {
+        setPendingTx(false);
+        setTxMessage("");
+      }
+    }
+  };
+
+  const agentBoostConnection = async (fromId: string, toId: string) => {
+    if (isDemoMode) {
+      setConnections((prev) =>
+        prev.map((c) =>
+          (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId)
+            ? {
+                ...c,
+                lastNurturedAt: Math.floor(Date.now() / 1000),
+                boostMultiplier: Math.min((c.boostMultiplier || 100) + 50, 300),
+              }
+            : c
+        )
+      );
+      return true;
+    } else {
+      if (!isConnected || !publicClient) return false;
+      try {
+        setTxMessage("[Agent Action] Boosting Link...");
+        setPendingTx(true);
+        const fee = await publicClient.readContract({
+          address: contractAddress as `0x${string}`,
+          abi: BUBBLES_ABI,
+          functionName: "calculateBoostFee",
+          args: [BigInt(fromId), BigInt(toId)],
+        }) as bigint;
+
+        await writeContractAsync({
+          address: contractAddress as `0x${string}`,
+          abi: BUBBLES_ABI,
+          functionName: "boostConnection",
+          args: [BigInt(fromId), BigInt(toId)],
+          value: fee,
+        });
+        setTimeout(() => loadLiveChainData(), 1500);
+        return true;
+      } catch (e) {
+        console.error(e);
+        return false;
+      } finally {
+        setPendingTx(false);
+        setTxMessage("");
+      }
+    }
+  };
+
+  // Instantiate useAgentLoop hook
+  const {
+    isRunning: agentIsRunning,
+    startAgent,
+    stopAgent,
+    budget: agentBudget,
+    setBudget: setAgentBudget,
+    spent: agentSpent,
+    logs: agentLogs,
+    clearLogs: clearAgentLogs,
+    agentNodeIds,
+    setAgentNodeIds,
+  } = useAgentLoop({
+    nodes,
+    connections,
+    walletAddress: activeUserAddress || "",
+    executePlaceNode: agentPlaceNode,
+    executeNurtureConnection: agentNurtureConnection,
+    executeBoostConnection: agentBoostConnection,
+    config: agentConfig,
+  });
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -150,6 +343,15 @@ export default function Home() {
       const mockData = generateMockData();
       setNodes(mockData.nodes);
       setConnections(mockData.connections);
+      
+      // Auto-assign some nodes to agentNodeIds in demo mode
+      const ids = new Set<string>();
+      mockData.nodes.forEach((n) => {
+        if (MOCK_AGENT_ADDRESSES.includes(n.owner)) {
+          ids.add(n.id);
+        }
+      });
+      setAgentNodeIds(ids);
     } else {
       loadLiveChainData();
     }
@@ -385,14 +587,6 @@ export default function Home() {
       (c) => (c.from === selectedNodeId || c.to === selectedNodeId) && !c.isPending
     );
   }, [connections, selectedNodeId]);
-
-  // Helper to determine active wallet address (mock or real)
-  const activeUserAddress = useMemo(() => {
-    if (isDemoMode) {
-      return "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"; // First hardhat account default mock
-    }
-    return userAddress || null;
-  }, [isDemoMode, userAddress]);
 
   // Actions
   const handlePlaceNode = async (x: number, y: number) => {
@@ -653,6 +847,7 @@ export default function Home() {
         onPlaceNode={handlePlaceNode}
         onConnectNodes={handleConnectNodes}
         pendingTx={pendingTx}
+        agentNodeIds={agentNodeIds}
       />
 
       {/* Top Header & Settings Menu */}
@@ -1008,24 +1203,65 @@ export default function Home() {
         )}
       </div>
 
+      {/* AI Agent Dashboard Glassmorphism Panel */}
+      <AgentDashboard
+        isRunning={agentIsRunning}
+        startAgent={startAgent}
+        stopAgent={stopAgent}
+        budget={agentBudget}
+        setBudget={setAgentBudget}
+        spent={agentSpent}
+        logs={agentLogs}
+        clearLogs={clearAgentLogs}
+        config={agentConfig}
+        setConfig={setAgentConfig}
+      />
+
       {/* Network Stats Overlay (Bottom Center) */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 pointer-events-none">
-        <div className="bg-white/5 backdrop-blur-lg border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex gap-8 pointer-events-auto">
+        <div className="bg-white/5 backdrop-blur-lg border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex gap-6 pointer-events-auto">
           <div className="flex flex-col items-center">
-            <span className="text-xs text-blue-200/50 uppercase tracking-wider font-semibold">
+            <span className="text-[10px] text-blue-200/50 uppercase tracking-wider font-semibold">
               Total Nodes
             </span>
-            <span className="text-xl font-extrabold text-white">
+            <span className="text-sm font-extrabold text-white">
               {nodes.length}
             </span>
           </div>
-          <div className="h-8 w-px bg-white/10 my-auto"></div>
+          <div className="h-6 w-px bg-white/10 my-auto"></div>
           <div className="flex flex-col items-center">
-            <span className="text-xs text-emerald-200/50 uppercase tracking-wider font-semibold">
+            <span className="text-[10px] text-emerald-200/50 uppercase tracking-wider font-semibold">
               Connections
             </span>
-            <span className="text-xl font-extrabold text-white">
+            <span className="text-sm font-extrabold text-white">
               {connections.filter((c) => !c.isPending).length}
+            </span>
+          </div>
+          <div className="h-6 w-px bg-white/10 my-auto"></div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] text-purple-300/60 uppercase tracking-wider font-semibold">
+              Rewards 24h
+            </span>
+            <span className="text-sm font-extrabold text-[#c084fc]">
+              {(connections.filter(c => !c.isPending).reduce((acc, c) => acc + (c.boostMultiplier || 100) * 0.00001, 0.024)).toFixed(4)} ETH
+            </span>
+          </div>
+          <div className="h-6 w-px bg-white/10 my-auto"></div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] text-pink-300/60 uppercase tracking-wider font-semibold">
+              Nodes 24h
+            </span>
+            <span className="text-sm font-extrabold text-pink-400">
+              {Math.floor(nodes.length * 0.08) + agentNodeIds.size}
+            </span>
+          </div>
+          <div className="h-6 w-px bg-white/10 my-auto"></div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] text-yellow-300/60 uppercase tracking-wider font-semibold">
+              Agents Active
+            </span>
+            <span className="text-sm font-extrabold text-yellow-400">
+              {MOCK_AGENT_ADDRESSES.length + (agentIsRunning ? 1 : 0)}
             </span>
           </div>
         </div>
