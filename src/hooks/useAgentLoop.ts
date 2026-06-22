@@ -190,7 +190,14 @@ export function useAgentLoop({
   // Local Heuristic Logic for Demo Mode
   const runHeuristicTurn = async () => {
     const currentConfig = configRef.current;
-    if (nodes.length === 0) return;
+    if (nodes.length === 0) {
+      await executeAction({
+        action: 'PLACE_NODE',
+        params: { x: 0, y: 0 },
+        reasoning: 'Grid is empty. Seeding origin pylon at (0, 0) to start network.'
+      });
+      return;
+    }
 
     // Filter connections that are decaying or owned by user
     const userNodes = nodes.filter((n) => n.owner.toLowerCase() === walletAddress.toLowerCase() || agentNodeIds.has(n.id));

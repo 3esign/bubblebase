@@ -312,6 +312,7 @@ Rules:
     budget: agentBudget,
     setBudget: setAgentBudget,
     spent: agentSpent,
+    setSpent: setAgentSpent,
     logs: agentLogs,
     clearLogs: clearAgentLogs,
     agentNodeIds,
@@ -589,6 +590,16 @@ Rules:
   }, [connections, selectedNodeId]);
 
   // Actions
+  const handleResetGrid = (empty: boolean) => {
+    setNodes([]);
+    setConnections([]);
+    setSelectedNodeId(null);
+    setTargetNodeId(null);
+    setPlacementCoords(null);
+    setAgentNodeIds(new Set());
+    setAgentSpent(0);
+  };
+
   const handlePlaceNode = async (x: number, y: number) => {
     setPlacementCoords({ x, y });
     setSelectedNodeId(null);
@@ -1215,6 +1226,7 @@ Rules:
         clearLogs={clearAgentLogs}
         config={agentConfig}
         setConfig={setAgentConfig}
+        onResetGrid={handleResetGrid}
       />
 
       {/* Network Stats Overlay (Bottom Center) */}
