@@ -871,6 +871,9 @@ Rules:
           <p className="text-xs text-blue-200/50 uppercase tracking-widest font-semibold">
             Base L2 Civilization Game
           </p>
+          <div className="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 w-fit">
+            🚧 UNDER CONSTRUCTION
+          </div>
         </div>
 
         {/* Action Controls & Wallet Connect */}
@@ -900,7 +903,9 @@ Rules:
 
           {!isDemoMode && (
             <div className="bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-2xl shadow-2xl">
-              <ConnectButton showBalance={false} chainStatus="name" />
+              <button disabled className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider text-gray-500 cursor-not-allowed bg-white/5">
+                Wallet Disabled (Construction)
+              </button>
             </div>
           )}
         </div>

@@ -1,5 +1,7 @@
 # BubbleBase (Base L2 Civilization Game)
 
+![BubbleBase Agent UI](public/screenshot.png)
+
 BubbleBase is a dystopian, cyberpunk civilization game built directly on the Base L2 Ethereum network. In this world, raw coordinate space is real estate, and survival depends on network connectivity.
 
 ---
