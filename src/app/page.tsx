@@ -146,6 +146,8 @@ export default function Home() {
   const [connections, setConnections] = useState<GameConnection[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [targetNodeId, setTargetNodeId] = useState<string | null>(null);
+  // Map of nodeKey => pending ETH rewards (in wei as bigint, simulated in demo)
+  const [pendingNodeRewards, setPendingNodeRewards] = useState<Map<string, bigint>>(new Map());
 
   // Helper to determine active wallet address (mock or real)
   const activeUserAddress = useMemo(() => {
@@ -466,7 +468,7 @@ Rules:
             abi: BUBBLES_ABI,
             functionName: "connections",
             args: [key],
-          }) as [bigint, bigint, boolean];
+          }) as unknown as [bigint, number, boolean];
 
           enrichedConns.push({
             ...conn,
@@ -841,6 +843,36 @@ Rules:
     }
   };
 
+  const executeClaimRewards = async (nodeKeys: string[]) => {
+    if (isDemoMode) {
+      // Simulate clearing pending rewards in demo
+      setPendingNodeRewards((prev) => {
+        const next = new Map(prev);
+        nodeKeys.forEach((k) => next.delete(k));
+        return next;
+      });
+      return;
+    }
+    if (!isConnected) return;
+    try {
+      setTxMessage("Claiming rewards from all nodes...");
+      setPendingTx(true);
+      await writeContractAsync({
+        address: contractAddress as `0x${string}`,
+        abi: BUBBLES_ABI,
+        functionName: "claimRewards",
+        args: [nodeKeys.map(BigInt)],
+      });
+      // After claim, refresh chain data
+      setTimeout(() => loadLiveChainData(), 1500);
+    } catch (e) {
+      console.error("Claim failed:", e);
+    } finally {
+      setPendingTx(false);
+      setTxMessage("");
+    }
+  };
+
   const formatAddress = (addr: string) => {
     return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
   };
@@ -943,7 +975,7 @@ Rules:
             </div>
             <div className="flex justify-between">
               <span>Approval Reward:</span>
-              <span className="text-emerald-400 font-semibold">50% of connection fee</span>
+              <span className="text-emerald-400 font-semibold">Pool share (by connections)</span>
             </div>
             <div className="flex justify-between">
               <span>Connection Decay:</span>
@@ -1006,6 +1038,31 @@ Rules:
                   {selectedNode.connectionsCount}
                 </span>
               </div>
+              {selectedNode.owner.toLowerCase() === activeUserAddress?.toLowerCase() && (() => {
+                const pendingWei = pendingNodeRewards.get(selectedNode.id) ?? 0n;
+                const pendingEth = Number(pendingWei) / 1e18;
+                return (
+                  <div className="flex justify-between items-center mt-1 pt-2 border-t border-white/10">
+                    <div className="flex flex-col">
+                      <span className="text-white/50">Unclaimed Rewards</span>
+                      <span className="text-[10px] text-white/30">Pool share by connections</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-bold text-sm ${ pendingEth > 0 ? 'text-yellow-300' : 'text-white/40'}`}>
+                        {pendingEth > 0 ? `${pendingEth.toFixed(6)} ETH` : '—'}
+                      </span>
+                      {pendingEth > 0 && (
+                        <button
+                          onClick={() => executeClaimRewards([selectedNode.id])}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 hover:bg-yellow-500/30 transition-all"
+                        >
+                          Claim
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* If player clicked their own node, show target node connection prompt */}
@@ -1048,8 +1105,8 @@ Rules:
                             <span className="text-blue-400">{feeInfo.total.toFixed(6)} ETH</span>
                           </div>
                           <div className="flex justify-between text-emerald-400 font-semibold mt-0.5">
-                            <span>Target Node Approval Reward:</span>
-                            <span>+{expectedReward.toFixed(6)} ETH (50%)</span>
+                            <span>Reward Pool Contribution:</span>
+                            <span>+{expectedReward.toFixed(6)} ETH (50% → pool)</span>
                           </div>
                         </div>
                       );
@@ -1281,6 +1338,31 @@ Rules:
               {MOCK_AGENT_ADDRESSES.length + (agentIsRunning ? 1 : 0)}
             </span>
           </div>
+          {/* Claim All Rewards button — only shown when user has rewards */}
+          {(() => {
+            const myNodeKeys = nodes
+              .filter((n) => n.owner.toLowerCase() === activeUserAddress?.toLowerCase())
+              .map((n) => n.id);
+            const totalPending = myNodeKeys.reduce((acc, k) => acc + (pendingNodeRewards.get(k) ?? 0n), 0n);
+            const totalEth = Number(totalPending) / 1e18;
+            if (totalEth <= 0) return null;
+            return (
+              <>
+                <div className="h-6 w-px bg-white/10 my-auto"></div>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-[10px] text-yellow-200/70 uppercase tracking-wider font-semibold">
+                    My Rewards
+                  </span>
+                  <button
+                    onClick={() => executeClaimRewards(myNodeKeys)}
+                    className="px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-yellow-500/25 text-yellow-300 border border-yellow-400/40 hover:bg-yellow-500/40 transition-all shadow-[0_0_12px_rgba(234,179,8,0.2)]"
+                  >
+                    Claim {totalEth.toFixed(6)} ETH
+                  </button>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
     </main>

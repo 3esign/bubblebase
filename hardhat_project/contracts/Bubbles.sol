@@ -24,6 +24,11 @@ contract Bubbles {
     mapping(uint64 => mapping(uint64 => uint256)) public pendingRequestFees;
     mapping(uint64 => uint32) public connectionCounts;
 
+    uint256 public totalConnections;
+    uint256 public rewardPerConnection; // Scaled by 1e18
+    mapping(uint64 => uint256) public nodeRewardDebt;
+    mapping(uint64 => uint256) public nodePendingRewards;
+
     // Undirected connection registry
     mapping(bytes32 => Connection) public connections;
 
@@ -32,6 +37,17 @@ contract Bubbles {
     event ConnectionApproved(uint64 indexed fromNode, uint64 indexed toNode);
     event ConnectionNurtured(uint64 indexed fromNode, uint64 indexed toNode, uint256 lastNurturedAt);
     event ConnectionBoosted(uint64 indexed fromNode, uint64 indexed toNode, uint256 boostMultiplier, uint256 lastNurturedAt);
+    event RewardsClaimed(uint64 indexed nodeKey, address indexed owner, uint256 amount);
+
+    function _updateNodeRewards(uint64 nodeKey) internal {
+        if (connectionCounts[nodeKey] > 0) {
+            uint256 pending = (connectionCounts[nodeKey] * rewardPerConnection) / 1e18 - nodeRewardDebt[nodeKey];
+            if (pending > 0) {
+                nodePendingRewards[nodeKey] += pending;
+            }
+        }
+        nodeRewardDebt[nodeKey] = (connectionCounts[nodeKey] * rewardPerConnection) / 1e18;
+    }
 
     function encodeCoordinate(int32 x, int32 y) public pure returns (uint64) {
         return (uint64(uint32(x)) << 32) | uint64(uint32(y));
@@ -140,8 +156,29 @@ contract Bubbles {
         uint256 feePaid = pendingRequestFees[fromNode][toNode];
         pendingRequestFees[fromNode][toNode] = 0;
 
+        uint256 rewardFee = (feePaid * REWARD_FEE_PERCENT) / 100;
+
+        // 1. Add reward to global pool based on current total connections
+        if (totalConnections > 0) {
+            rewardPerConnection += (rewardFee * 1e18) / totalConnections;
+        } else {
+            // First connections on the grid get the initial fee directly
+            nodePendingRewards[fromNode] += rewardFee / 2;
+            nodePendingRewards[toNode] += rewardFee - (rewardFee / 2);
+        }
+
+        // 2. Update node rewards before increasing connections
+        _updateNodeRewards(fromNode);
+        _updateNodeRewards(toNode);
+
+        // 3. Update connection counts
         connectionCounts[fromNode]++;
         connectionCounts[toNode]++;
+        totalConnections += 2;
+
+        // 4. Update debt for the new connection counts
+        nodeRewardDebt[fromNode] = (connectionCounts[fromNode] * rewardPerConnection) / 1e18;
+        nodeRewardDebt[toNode] = (connectionCounts[toNode] * rewardPerConnection) / 1e18;
 
         // Register the active connection
         bytes32 key = getConnKey(fromNode, toNode);
@@ -150,10 +187,6 @@ contract Bubbles {
             boostMultiplier: 100, // starting at 1.0x
             active: true
         });
-
-        // Pay reward to the target node owner
-        uint256 rewardFee = (feePaid * REWARD_FEE_PERCENT) / 100;
-        payable(msg.sender).transfer(rewardFee);
 
         emit ConnectionApproved(fromNode, toNode);
     }
@@ -172,15 +205,8 @@ contract Bubbles {
         CREATOR.transfer(creatorFee);
         
         uint256 remaining = msg.value - creatorFee;
-        address ownerA = nodes[fromNode];
-        address ownerB = nodes[toNode];
-        
-        if (ownerA == ownerB) {
-            payable(ownerA).transfer(remaining);
-        } else {
-            uint256 half = remaining / 2;
-            payable(ownerA).transfer(half);
-            payable(ownerB).transfer(remaining - half);
+        if (totalConnections > 0) {
+            rewardPerConnection += (remaining * 1e18) / totalConnections;
         }
 
         emit ConnectionNurtured(fromNode, toNode, block.timestamp);
@@ -208,17 +234,28 @@ contract Bubbles {
         CREATOR.transfer(creatorFee);
         
         uint256 remaining = msg.value - creatorFee;
-        address ownerA = nodes[fromNode];
-        address ownerB = nodes[toNode];
-        
-        if (ownerA == ownerB) {
-            payable(ownerA).transfer(remaining);
-        } else {
-            uint256 half = remaining / 2;
-            payable(ownerA).transfer(half);
-            payable(ownerB).transfer(remaining - half);
+        if (totalConnections > 0) {
+            rewardPerConnection += (remaining * 1e18) / totalConnections;
         }
 
         emit ConnectionBoosted(fromNode, toNode, conn.boostMultiplier, block.timestamp);
+    }
+
+    function claimRewards(uint64[] calldata nodeKeys) external {
+        uint256 totalReward = 0;
+        for (uint i = 0; i < nodeKeys.length; i++) {
+            uint64 node = nodeKeys[i];
+            require(nodes[node] == msg.sender, "Not owner");
+            _updateNodeRewards(node);
+            uint256 reward = nodePendingRewards[node];
+            if (reward > 0) {
+                nodePendingRewards[node] = 0;
+                totalReward += reward;
+                emit RewardsClaimed(node, msg.sender, reward);
+            }
+        }
+        if (totalReward > 0) {
+            payable(msg.sender).transfer(totalReward);
+        }
     }
 }
