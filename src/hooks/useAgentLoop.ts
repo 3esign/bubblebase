@@ -21,6 +21,7 @@ interface UseAgentLoopProps {
   connections: any[];
   walletAddress: string;
   executePlaceNode: (x: number, y: number) => Promise<boolean>;
+  executeRequestConnection: (fromId: string, toId: string) => Promise<boolean>;
   executeNurtureConnection: (fromId: string, toId: string) => Promise<boolean>;
   executeBoostConnection: (fromId: string, toId: string) => Promise<boolean>;
   config: AgentConfig;
@@ -31,6 +32,7 @@ export function useAgentLoop({
   connections,
   walletAddress,
   executePlaceNode,
+  executeRequestConnection,
   executeNurtureConnection,
   executeBoostConnection,
   config,
@@ -146,6 +148,26 @@ export function useAgentLoop({
       }
     }
 
+    if (action === 'REQUEST_CONNECTION') {
+      const { fromId, toId } = params;
+      const cost = 0.000005;
+      if (spentRef.current + cost > budgetRef.current) {
+        addLog(`Blocked Action: Requesting connection would exceed budget cap.`, 'warning');
+        return false;
+      }
+      addLog(`Agent requesting connection from ${fromId} to ${toId}. Cost: ${cost} ETH`, 'info');
+      const success = await executeRequestConnection(fromId, toId);
+      if (success) {
+        setSpent((prev) => prev + cost);
+        addLog(`Requested connection ${fromId} -> ${toId} successfully`, 'success');
+        actionHistoryRef.current.push(`REQUEST(${fromId}, ${toId})`);
+        return true;
+      } else {
+        addLog(`Failed to request connection ${fromId} -> ${toId}`, 'error');
+        return false;
+      }
+    }
+
     if (action === 'NURTURE_CONNECTION') {
       const { fromId, toId } = params;
       const cost = 0.000002;
@@ -254,6 +276,26 @@ export function useAgentLoop({
       const distance = 1 + Math.floor(Math.random() * 3);
       const x = Math.round(anchorNode.x + Math.cos(angle) * distance);
       const y = Math.round(anchorNode.y + Math.sin(angle) * distance);
+
+      // Random chance to either PLACE_NODE or REQUEST_CONNECTION if there are multiple nodes
+      if (currentNodes.length > 1 && Math.random() > 0.5) {
+        const potentialTargets = currentNodes.filter(n => n.id !== anchorNode.id && !currentConnections.some(c => (c.from === anchorNode.id && c.to === n.id) || (c.from === n.id && c.to === anchorNode.id)));
+        if (potentialTargets.length > 0) {
+          // Sort by closest distance
+          potentialTargets.sort((a, b) => {
+             const distA = Math.abs(a.x - anchorNode.x) + Math.abs(a.y - anchorNode.y);
+             const distB = Math.abs(b.x - anchorNode.x) + Math.abs(b.y - anchorNode.y);
+             return distA - distB;
+          });
+          const target = potentialTargets[0];
+          await executeAction({
+            action: 'REQUEST_CONNECTION',
+            params: { fromId: anchorNode.id, toId: target.id },
+            reasoning: `Forming connection from ${anchorNode.id} to nearby node ${target.id}.`
+          });
+          return;
+        }
+      }
 
       await executeAction({
         action: 'PLACE_NODE',

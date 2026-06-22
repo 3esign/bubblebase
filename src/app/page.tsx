@@ -167,6 +167,9 @@ export default function Home() {
   // Clock tick trigger state to update decay timers in UI every second
   const [clockTick, setClockTick] = useState(0);
 
+  // About Modal state
+  const [showAboutModal, setShowAboutModal] = useState(false);
+
   // Agent System Config state
   const [agentConfig, setAgentConfig] = useState<AgentConfig>({
     provider: 'demo',
@@ -306,6 +309,51 @@ Rules:
     }
   };
 
+  const agentRequestConnection = async (fromId: string, toId: string) => {
+    if (isDemoMode) {
+      setConnections((prev) => [
+        ...prev,
+        {
+          from: fromId,
+          to: toId,
+          isPending: true,
+          lastNurturedAt: Math.floor(Date.now() / 1000),
+          boostMultiplier: 100,
+        },
+      ]);
+      return true;
+    } else {
+      if (!isConnected || !publicClient) return false;
+      try {
+        setTxMessage("[Agent Action] Estimating connection fee...");
+        setPendingTx(true);
+        const requiredFee = await publicClient.readContract({
+          address: contractAddress as `0x${string}`,
+          abi: BUBBLES_ABI,
+          functionName: "calculateConnectionFee",
+          args: [BigInt(fromId), BigInt(toId)],
+        }) as bigint;
+
+        setTxMessage("[Agent Action] Requesting connection...");
+        await writeContractAsync({
+          address: contractAddress as `0x${string}`,
+          abi: BUBBLES_ABI,
+          functionName: "requestConnection",
+          args: [BigInt(fromId), BigInt(toId)],
+          value: requiredFee,
+        });
+        setTimeout(() => loadLiveChainData(), 1500);
+        return true;
+      } catch (e) {
+        console.error(e);
+        return false;
+      } finally {
+        setPendingTx(false);
+        setTxMessage("");
+      }
+    }
+  };
+
   // Instantiate useAgentLoop hook
   const {
     isRunning: agentIsRunning,
@@ -324,6 +372,7 @@ Rules:
     connections,
     walletAddress: activeUserAddress || "",
     executePlaceNode: agentPlaceNode,
+    executeRequestConnection: agentRequestConnection,
     executeNurtureConnection: agentNurtureConnection,
     executeBoostConnection: agentBoostConnection,
     config: agentConfig,
@@ -909,6 +958,21 @@ Rules:
 
   return (
     <main className="w-full h-screen relative overflow-hidden bg-[#050511] select-none text-white">
+      {/* Mainnet Lock Screen */}
+      {!isDemoMode && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-md">
+          <div className="text-center p-8 bg-[#050511] border border-purple-500/50 rounded-2xl shadow-2xl max-w-lg z-50">
+            <h2 className="text-3xl font-bold text-white mb-4 neon-text-blue">Mainnet Locked</h2>
+            <p className="text-gray-400 mb-6 leading-relaxed">
+              The Live Mainnet version of BubbleBase is currently locked while we upgrade the grid infrastructure. Please switch to Demo Mode to experience the autonomous agent simulations and heuristic networking!
+            </p>
+            <button onClick={() => setIsDemoMode(true)} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-[0_0_15px_rgba(59,130,246,0.4)]">
+              Switch to Demo Mode
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 2.5D Interactive Canvas */}
       <GameMap
         isDemoMode={isDemoMode}
@@ -939,8 +1003,17 @@ Rules:
         </div>
 
         {/* Action Controls & Wallet Connect */}
-        <div className="flex flex-col items-end gap-3 pointer-events-auto">
+        <div className="flex flex-col items-end gap-3 pointer-events-auto z-50">
           <div className="flex items-center gap-4 bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-2xl shadow-2xl">
+            <a href="https://github.com/3esign/bubblebase" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white transition-colors text-sm font-semibold flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+              GitHub
+            </a>
+            <div className="w-px h-4 bg-white/20"></div>
+            <button onClick={() => setShowAboutModal(true)} className="text-gray-400 hover:text-white transition-colors text-sm font-semibold">
+              About
+            </button>
+            <div className="w-px h-4 bg-white/20"></div>
             <button
               onClick={() => setIsDemoMode(true)}
               className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 ${
@@ -1395,6 +1468,68 @@ Rules:
           })()}
         </div>
       </div>
+
+      {/* Agent Dashboard Overlay */}
+      {isDemoMode && (
+        <AgentDashboard
+          isRunning={agentIsRunning}
+          startAgent={startAgent}
+          stopAgent={stopAgent}
+          budget={agentBudget}
+          setBudget={setAgentBudget}
+          spent={agentSpent}
+          logs={agentLogs}
+          clearLogs={clearAgentLogs}
+          config={agentConfig}
+          setConfig={setAgentConfig}
+          onResetGrid={(empty) => {
+            if (empty) {
+              setNodes([]);
+              setConnections([]);
+              setAgentNodeIds(new Set());
+            } else {
+              const mockData = generateMockData();
+              setNodes(mockData.nodes);
+              setConnections(mockData.connections);
+              const ids = new Set<string>();
+              mockData.nodes.forEach((n) => {
+                if (MOCK_AGENT_ADDRESSES.includes(n.owner)) {
+                  ids.add(n.id);
+                }
+              });
+              setAgentNodeIds(ids);
+            }
+          }}
+        />
+      )}
+
+      {/* About Modal */}
+      {showAboutModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#050511] border border-purple-500/30 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-white">About BubbleBase</h2>
+              <button onClick={() => setShowAboutModal(false)} className="text-gray-400 hover:text-white text-3xl leading-none">&times;</button>
+            </div>
+            <div className="text-gray-300 space-y-4 text-sm leading-relaxed">
+              <p>
+                <strong>BubbleBase</strong> is an isometric, decentralized civilization game built directly on the Base L2 Ethereum network. In this dystopian, cyberpunk world, raw coordinate grid space is real estate, and survival depends on data bandwidth and network connectivity.
+              </p>
+              <h3 className="text-lg font-bold text-purple-400 mt-6">Gameplay Mechanics</h3>
+              <ul className="list-disc pl-5 space-y-2">
+                <li><strong>Place Nodes:</strong> Deploy a basic infrastructure Node (Pylon). This registers your node permanently on-chain.</li>
+                <li><strong>Forge Connections:</strong> Request connections to other players' nodes. As your node accumulates links, it transforms from a humble Pylon into a towering Citadel.</li>
+                <li><strong>Earn Passive Yield:</strong> Every time another player connects nearby, nurtures a link, or boosts their network speed, they pay fees into a global reward pool. You can claim your accumulated ETH yield.</li>
+                <li><strong>Prevent Grid Decay:</strong> Connections suffer from entropy and decay after 24 hours. Reset the timer by Nurturing the link, or Boost it to overclock your throughput.</li>
+              </ul>
+              <h3 className="text-lg font-bold text-blue-400 mt-6">Autonomous Agents</h3>
+              <p>
+                Delegate your grid operations to an AI. Choose a strategy (Expansionist, Defensive, etc.) and a provider (OpenAI, Anthropic, Gemini, Ollama, or Local Heuristic). The agent will evaluate the game state, analyze its surroundings, and autonomously place nodes and maintain your connections based on a predetermined budget.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
