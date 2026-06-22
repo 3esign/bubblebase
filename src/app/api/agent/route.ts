@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const { provider, apiKey, model, systemPrompt, gameState, actionHistory } = await request.json();
+    const { provider, model, systemPrompt, gameState, actionHistory } = await request.json();
+    const apiKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+    
+    if (!apiKey) {
+      return NextResponse.json({ action: 'HOLD', params: { reason: `Missing API key for ${provider}` }, reasoning: 'Server missing config.' });
+    }
 
     const promptContent = `
 Analyze the current game state and select the best action.
@@ -20,14 +25,17 @@ ${JSON.stringify(gameState.nodes.slice(0, 30).map((n: any) => ({
 ${gameState.nodes.length > 30 ? `...and ${gameState.nodes.length - 30} more nodes` : ''}
 
 Active Connections:
-${JSON.stringify(gameState.connections.slice(0, 30).map((c: any) => ({
-  id: c.id,
-  fromId: c.fromId,
-  toId: c.toId,
-  boostMultiplier: c.boostMultiplier,
-  timeRemainingHours: c.timeRemainingHours,
-  active: c.active
-})), null, 2)}
+${JSON.stringify(gameState.connections.slice(0, 30).map((c: any) => {
+  const timeRemainingHours = c.lastNurturedAt ? (c.lastNurturedAt + 86400 - (Date.now() / 1000)) / 3600 : 0;
+  return {
+    id: `${c.from}-${c.to}`,
+    fromId: c.from,
+    toId: c.to,
+    boostMultiplier: c.boostMultiplier || 100,
+    timeRemainingHours,
+    active: !c.isPending
+  };
+}), null, 2)}
 ${gameState.connections.length > 30 ? `...and ${gameState.connections.length - 30} more connections` : ''}
 
 Action History:

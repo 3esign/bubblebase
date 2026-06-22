@@ -47,8 +47,18 @@ export function useAgentLoop({
   const spentRef = useRef(spent);
   const budgetRef = useRef(budget);
   const actionHistoryRef = useRef<string[]>([]);
+  const nodesRef = useRef(nodes);
+  const connectionsRef = useRef(connections);
 
   // Update refs to avoid closure stale state
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
+  useEffect(() => {
+    connectionsRef.current = connections;
+  }, [connections]);
+
   useEffect(() => {
     isRunningRef.current = isRunning;
   }, [isRunning]);
@@ -105,7 +115,7 @@ export function useAgentLoop({
 
     if (action === 'PLACE_NODE') {
       const { x, y } = params;
-      const cost = 0.002; // soft cost definition
+      const cost = 0.00001; // soft cost definition
       if (spentRef.current + cost > budgetRef.current) {
         addLog(`Blocked Action: Place node at (${x}, ${y}) would exceed budget cap.`, 'warning');
         return false;
@@ -138,7 +148,7 @@ export function useAgentLoop({
 
     if (action === 'NURTURE_CONNECTION') {
       const { fromId, toId } = params;
-      const cost = 0.0005;
+      const cost = 0.000002;
       if (spentRef.current + cost > budgetRef.current) {
         addLog(`Blocked Action: Nurturing connection would exceed budget cap.`, 'warning');
         return false;
@@ -158,7 +168,7 @@ export function useAgentLoop({
 
     if (action === 'BOOST_CONNECTION') {
       const { fromId, toId } = params;
-      const cost = 0.001;
+      const cost = 0.000005;
       if (spentRef.current + cost > budgetRef.current) {
         addLog(`Blocked Action: Boosting connection would exceed budget cap.`, 'warning');
         return false;
@@ -190,7 +200,10 @@ export function useAgentLoop({
   // Local Heuristic Logic for Demo Mode
   const runHeuristicTurn = async () => {
     const currentConfig = configRef.current;
-    if (nodes.length === 0) {
+    const currentNodes = nodesRef.current;
+    const currentConnections = connectionsRef.current;
+    
+    if (currentNodes.length === 0) {
       await executeAction({
         action: 'PLACE_NODE',
         params: { x: 0, y: 0 },
@@ -200,16 +213,18 @@ export function useAgentLoop({
     }
 
     // Filter connections that are decaying or owned by user
-    const userNodes = nodes.filter((n) => n.owner.toLowerCase() === walletAddress.toLowerCase() || agentNodeIds.has(n.id));
+    const userNodes = currentNodes.filter((n) => n.owner.toLowerCase() === walletAddress.toLowerCase() || agentNodeIds.has(n.id));
     
     if (currentConfig.strategy === 'defensive' || currentConfig.strategy === 'maintainer') {
       // Prioritize nurturing/boosting decaying connections that belong to the user
-      const decaying = connections.filter(
-        (c) =>
-          c.active &&
-          c.timeRemainingHours < 12 &&
-          (userNodes.some((n) => n.id === c.fromId) || userNodes.some((n) => n.id === c.toId))
-      );
+      const decaying = currentConnections.filter(
+        (c) => {
+          const timeRemainingHours = c.lastNurturedAt ? (c.lastNurturedAt + 86400 - (Date.now() / 1000)) / 3600 : 0;
+          return !c.isPending &&
+          timeRemainingHours < 12 &&
+          (userNodes.some((n) => n.id === c.from) || userNodes.some((n) => n.id === c.to));
+        }
+      ).map(c => ({ ...c, timeRemainingHours: c.lastNurturedAt ? (c.lastNurturedAt + 86400 - (Date.now() / 1000)) / 3600 : 0 }));
 
       if (decaying.length > 0) {
         // Sort by time remaining
@@ -221,7 +236,7 @@ export function useAgentLoop({
         
         await executeAction({
           action,
-          params: { fromId: target.fromId, toId: target.toId },
+          params: { fromId: target.from, toId: target.to },
           reasoning: `Decaying connection detected with ${target.timeRemainingHours.toFixed(1)}h remaining. Strategy is ${currentConfig.strategy}.`,
         });
         return;
@@ -232,11 +247,11 @@ export function useAgentLoop({
       // Place a new node relative to a random cluster center or user node
       const anchorNode = userNodes.length > 0
         ? userNodes[Math.floor(Math.random() * userNodes.length)]
-        : nodes[Math.floor(Math.random() * nodes.length)];
+        : currentNodes[Math.floor(Math.random() * currentNodes.length)];
 
       const angle = Math.random() * Math.PI * 2;
-      // Distance between 80px and 220px to keep them in range of isometric wires
-      const distance = 80 + Math.random() * 140;
+      // Distance between 1 and 3 grid units to keep them nearby
+      const distance = 1 + Math.floor(Math.random() * 3);
       const x = Math.round(anchorNode.x + Math.cos(angle) * distance);
       const y = Math.round(anchorNode.y + Math.sin(angle) * distance);
 
@@ -273,8 +288,8 @@ export function useAgentLoop({
           systemPrompt: currentConfig.systemPrompt,
           gameState: {
             walletAddress,
-            nodes,
-            connections,
+            nodes: nodesRef.current,
+            connections: connectionsRef.current,
           },
           actionHistory: actionHistoryRef.current.slice(-10),
         }),

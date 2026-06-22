@@ -38,6 +38,8 @@ contract Bubbles {
     event ConnectionNurtured(uint64 indexed fromNode, uint64 indexed toNode, uint256 lastNurturedAt);
     event ConnectionBoosted(uint64 indexed fromNode, uint64 indexed toNode, uint256 boostMultiplier, uint256 lastNurturedAt);
     event RewardsClaimed(uint64 indexed nodeKey, address indexed owner, uint256 amount);
+    event ConnectionDeactivated(uint64 indexed fromNode, uint64 indexed toNode);
+    event ConnectionRequestCancelled(uint64 indexed fromNode, uint64 indexed toNode);
 
     function _updateNodeRewards(uint64 nodeKey) internal {
         if (connectionCounts[nodeKey] > 0) {
@@ -125,7 +127,8 @@ contract Bubbles {
 
         // Pay creator
         uint256 creatorFee = (ACTION_FEE * CREATOR_FEE_PERCENT) / 100;
-        CREATOR.transfer(creatorFee);
+        (bool success, ) = CREATOR.call{value: creatorFee}("");
+        require(success, "Fee transfer failed");
 
         emit NodePlaced(nodeKey, msg.sender, x, y);
     }
@@ -135,6 +138,7 @@ contract Bubbles {
         require(msg.value >= requiredFee, "Insufficient fee");
         require(nodes[fromNode] == msg.sender, "Not fromNode owner");
         require(nodes[toNode] != address(0), "toNode does not exist");
+        require(fromNode != toNode, "Self-connection not allowed");
         require(!pendingRequests[fromNode][toNode], "Request already pending");
 
         pendingRequests[fromNode][toNode] = true;
@@ -142,7 +146,8 @@ contract Bubbles {
 
         // Pay creator
         uint256 creatorFee = (msg.value * CREATOR_FEE_PERCENT) / 100;
-        CREATOR.transfer(creatorFee);
+        (bool success, ) = CREATOR.call{value: creatorFee}("");
+        require(success, "Fee transfer failed");
 
         emit ConnectionRequested(fromNode, toNode);
     }
@@ -150,6 +155,8 @@ contract Bubbles {
     function approveConnection(uint64 fromNode, uint64 toNode) external {
         require(nodes[toNode] == msg.sender, "Not toNode owner");
         require(pendingRequests[fromNode][toNode], "No pending request");
+        bytes32 key = getConnKey(fromNode, toNode);
+        require(!connections[key].active, "Connection already exists");
 
         pendingRequests[fromNode][toNode] = false;
         
@@ -181,7 +188,6 @@ contract Bubbles {
         nodeRewardDebt[toNode] = (connectionCounts[toNode] * rewardPerConnection) / 1e18;
 
         // Register the active connection
-        bytes32 key = getConnKey(fromNode, toNode);
         connections[key] = Connection({
             lastNurturedAt: uint64(block.timestamp),
             boostMultiplier: 100, // starting at 1.0x
@@ -202,7 +208,8 @@ contract Bubbles {
         
         // Distribute fee
         uint256 creatorFee = (msg.value * CREATOR_FEE_PERCENT) / 100;
-        CREATOR.transfer(creatorFee);
+        (bool success, ) = CREATOR.call{value: creatorFee}("");
+        require(success, "Fee transfer failed");
         
         uint256 remaining = msg.value - creatorFee;
         if (totalConnections > 0) {
@@ -231,7 +238,8 @@ contract Bubbles {
         
         // Distribute fee
         uint256 creatorFee = (msg.value * CREATOR_FEE_PERCENT) / 100;
-        CREATOR.transfer(creatorFee);
+        (bool success, ) = CREATOR.call{value: creatorFee}("");
+        require(success, "Fee transfer failed");
         
         uint256 remaining = msg.value - creatorFee;
         if (totalConnections > 0) {
@@ -239,6 +247,41 @@ contract Bubbles {
         }
 
         emit ConnectionBoosted(fromNode, toNode, conn.boostMultiplier, block.timestamp);
+    }
+
+    function deactivateConnection(uint64 fromNode, uint64 toNode) external {
+        bytes32 key = getConnKey(fromNode, toNode);
+        require(connections[key].active, "Connection does not exist");
+        require(!isConnectionActive(fromNode, toNode), "Connection has not decayed");
+
+        _updateNodeRewards(fromNode);
+        _updateNodeRewards(toNode);
+
+        connections[key].active = false;
+        connections[key].boostMultiplier = 100;
+
+        if (connectionCounts[fromNode] > 0) connectionCounts[fromNode]--;
+        if (connectionCounts[toNode] > 0) connectionCounts[toNode]--;
+        if (totalConnections >= 2) totalConnections -= 2;
+
+        nodeRewardDebt[fromNode] = (connectionCounts[fromNode] * rewardPerConnection) / 1e18;
+        nodeRewardDebt[toNode] = (connectionCounts[toNode] * rewardPerConnection) / 1e18;
+
+        emit ConnectionDeactivated(fromNode, toNode);
+    }
+
+    function cancelConnectionRequest(uint64 fromNode, uint64 toNode) external {
+        require(nodes[fromNode] == msg.sender, "Not fromNode owner");
+        require(pendingRequests[fromNode][toNode], "No pending request");
+
+        pendingRequests[fromNode][toNode] = false;
+        uint256 feePaid = pendingRequestFees[fromNode][toNode];
+        pendingRequestFees[fromNode][toNode] = 0;
+
+        (bool success, ) = payable(msg.sender).call{value: feePaid}("");
+        require(success, "Refund failed");
+
+        emit ConnectionRequestCancelled(fromNode, toNode);
     }
 
     function claimRewards(uint64[] calldata nodeKeys) external {
@@ -254,8 +297,7 @@ contract Bubbles {
                 emit RewardsClaimed(node, msg.sender, reward);
             }
         }
-        if (totalReward > 0) {
-            payable(msg.sender).transfer(totalReward);
-        }
+            (bool success, ) = payable(msg.sender).call{value: totalReward}("");
+            require(success, "Reward transfer failed");
     }
 }

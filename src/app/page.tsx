@@ -450,11 +450,10 @@ Rules:
 
       // 4. Enrich approved connections with real-time on-chain Nurture/Boost states
       setTxMessage("Syncing decay states from Base...");
-      const enrichedConns: GameConnection[] = [];
-      for (const conn of loadedConns) {
+      
+      const enrichmentPromises = loadedConns.map(async (conn) => {
         if (conn.isPending) {
-          enrichedConns.push(conn);
-          continue;
+          return conn;
         }
         try {
           const key = await publicClient.readContract({
@@ -470,15 +469,39 @@ Rules:
             args: [key],
           }) as unknown as [bigint, number, boolean];
 
-          enrichedConns.push({
+          return {
             ...conn,
             lastNurturedAt: Number(connState[0]),
             boostMultiplier: Number(connState[1]),
-          });
+          };
         } catch (e) {
           console.error("Error reading connection details", e);
-          enrichedConns.push(conn);
+          return conn;
         }
+      });
+      
+      const enrichedConns = await Promise.all(enrichmentPromises);
+
+      // 5. Fetch Pending Rewards for user nodes
+      if (activeUserAddress) {
+        const userNodeIds = loadedNodes.filter(n => n.owner.toLowerCase() === activeUserAddress.toLowerCase()).map(n => n.id);
+        const rewardPromises = userNodeIds.map(async (nodeId) => {
+          try {
+            const reward = await publicClient.readContract({
+              address: contractAddress as `0x${string}`,
+              abi: BUBBLES_ABI,
+              functionName: "nodePendingRewards",
+              args: [BigInt(nodeId)]
+            }) as bigint;
+            return { nodeId, reward };
+          } catch (e) {
+            return { nodeId, reward: 0n };
+          }
+        });
+        const rewards = await Promise.all(rewardPromises);
+        const newRewardMap = new Map<string, bigint>();
+        rewards.forEach(r => newRewardMap.set(r.nodeId, r.reward));
+        setPendingNodeRewards(newRewardMap);
       }
 
       setNodes(loadedNodes);
@@ -681,7 +704,6 @@ Rules:
     const fromNode = nodes.find((n) => n.id === selectedNodeId);
     const toNode = nodes.find((n) => n.id === targetNodeId);
     if (!fromNode || !toNode) return;
-    const feeInfo = calculateDynamicFee(fromNode, toNode);
 
     if (isDemoMode) {
       setConnections((prev) => [
@@ -696,16 +718,24 @@ Rules:
       ]);
       setTargetNodeId(null);
     } else {
-      if (!isConnected) return;
+      if (!isConnected || !publicClient) return;
       try {
-        setTxMessage("Confirm transaction to request connection...");
+        setTxMessage("Estimating connection fee...");
         setPendingTx(true);
+        const requiredFee = await publicClient.readContract({
+          address: contractAddress as `0x${string}`,
+          abi: BUBBLES_ABI,
+          functionName: "calculateConnectionFee",
+          args: [BigInt(selectedNodeId), BigInt(targetNodeId)],
+        }) as bigint;
+
+        setTxMessage("Confirm transaction to request connection...");
         await writeContractAsync({
           address: contractAddress as `0x${string}`,
           abi: BUBBLES_ABI,
           functionName: "requestConnection",
           args: [BigInt(selectedNodeId), BigInt(targetNodeId)],
-          value: parseEther(feeInfo.total.toFixed(6)), // 6 decimals for micro-ETH
+          value: requiredFee,
         });
         setTargetNodeId(null);
       } catch (e) {
