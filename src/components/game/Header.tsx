@@ -17,8 +17,13 @@ export function Header({ appMode, setAppMode, onExportAboutText }: HeaderProps) 
         <p className="text-xs text-blue-200/50 uppercase tracking-widest font-semibold">
           Base L2 Civilization Game
         </p>
-        <div className="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 w-fit">
-          🚧 UNDER CONSTRUCTION
+        <div className="mt-2 flex flex-wrap gap-1.5 items-center">
+          <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 w-fit">
+            🚧 UNDER CONSTRUCTION
+          </div>
+          <div className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 w-fit">
+            v2.0 (Split Modes)
+          </div>
         </div>
       </div>
 
