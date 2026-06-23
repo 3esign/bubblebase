@@ -66,6 +66,8 @@ export default function Home() {
       simulation.setIsRunning(false);
       simulation.setWorld({ ...initialWorld, timeSeconds: Math.floor(Date.now() / 1000) });
       simulation.setAgents(initialAgents);
+      game.setNodes([]);
+      game.setConnections([]);
     }
   }, [isDemoMode]);
 
