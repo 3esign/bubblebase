@@ -10,7 +10,8 @@ import {
 import { encodeCoordinate } from "../utils/coordinates";
 import { GameNode, GameConnection } from "../components/GameMap";
 
-export function useBubblesGame(isDemoMode: boolean) {
+export function useBubblesGame(appMode: "demo" | "simulation" | "live") {
+  const isLocalMode = appMode !== "live";
   // Web3 Hooks
   const { address: userAddress, isConnected } = useAccount();
   const chainId = useChainId();
@@ -38,11 +39,11 @@ export function useBubblesGame(isDemoMode: boolean) {
 
   // Helper to determine active wallet address (mock or real)
   const activeUserAddress = useMemo(() => {
-    if (isDemoMode) {
+    if (isLocalMode) {
       return "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"; // First hardhat account default mock
     }
     return userAddress || null;
-  }, [isDemoMode, userAddress]);
+  }, [isLocalMode, userAddress]);
 
   // Clock tick trigger state to update decay timers in UI every second
   useEffect(() => {
@@ -54,11 +55,11 @@ export function useBubblesGame(isDemoMode: boolean) {
 
   const isLiveChainReady = useMemo(() => {
     return (
-      !isDemoMode &&
+      !isLocalMode &&
       isConnected &&
       contractAddress !== "0x0000000000000000000000000000000000000000"
     );
-  }, [isDemoMode, isConnected, contractAddress]);
+  }, [isLocalMode, isConnected, contractAddress]);
 
   const loadLiveChainData = useCallback(async () => {
     if (!publicClient || !isConnected) return;
@@ -214,7 +215,7 @@ export function useBubblesGame(isDemoMode: boolean) {
     }
   }, [publicClient, contractAddress, activeUserAddress, isConnected]);
 
-  // Reset grid when switching modes — demo is filled by simulation sync in page.tsx
+  // Reset grid when switching modes — demo/simulation are filled separately in page.tsx
   useEffect(() => {
     const timer = setTimeout(() => {
       setSelectedNodeId(null);
@@ -225,7 +226,7 @@ export function useBubblesGame(isDemoMode: boolean) {
       setPendingNodeRewards(new Map());
     }, 0);
     return () => clearTimeout(timer);
-  }, [isDemoMode]);
+  }, [appMode]);
 
   // Sync from chain only when wallet is connected to a deployed contract
   useEffect(() => {
@@ -383,7 +384,7 @@ export function useBubblesGame(isDemoMode: boolean) {
     const { x, y } = placementCoords;
     const key = encodeCoordinate(x, y).toString();
 
-    if (isDemoMode) {
+    if (isLocalMode) {
       const newNode: GameNode = {
         id: key,
         x,
@@ -414,7 +415,7 @@ export function useBubblesGame(isDemoMode: boolean) {
         setTxMessage("");
       }
     }
-  }, [placementCoords, isDemoMode, activeUserAddress, isConnected, contractAddress, writeContractAsync]);
+  }, [placementCoords, isLocalMode, activeUserAddress, isConnected, contractAddress, writeContractAsync]);
 
   const executeRequestConnection = useCallback(async () => {
     if (!selectedNodeId || !targetNodeId) return;
@@ -423,7 +424,7 @@ export function useBubblesGame(isDemoMode: boolean) {
     const toNode = nodes.find((n) => n.id === targetNodeId);
     if (!fromNode || !toNode) return;
 
-    if (isDemoMode) {
+    if (isLocalMode) {
       setConnections((prev) => [
         ...prev,
         {
@@ -463,12 +464,12 @@ export function useBubblesGame(isDemoMode: boolean) {
         setTxMessage("");
       }
     }
-  }, [selectedNodeId, targetNodeId, nodes, isDemoMode, isConnected, publicClient, contractAddress, writeContractAsync]);
+  }, [selectedNodeId, targetNodeId, nodes, isLocalMode, isConnected, publicClient, contractAddress, writeContractAsync]);
 
   const executeApproveConnection = useCallback(async (fromId: string) => {
     if (!selectedNodeId) return;
 
-    if (isDemoMode) {
+    if (isLocalMode) {
       setConnections((prev) =>
         prev.map((c) =>
           c.from === fromId && c.to === selectedNodeId
@@ -501,10 +502,10 @@ export function useBubblesGame(isDemoMode: boolean) {
         setTxMessage("");
       }
     }
-  }, [selectedNodeId, isDemoMode, isConnected, contractAddress, writeContractAsync]);
+  }, [selectedNodeId, isLocalMode, isConnected, contractAddress, writeContractAsync]);
 
   const executeNurtureConnection = useCallback(async (fromId: string, toId: string) => {
-    if (isDemoMode) {
+    if (isLocalMode) {
       setConnections((prev) =>
         prev.map((c) =>
           (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId)
@@ -545,10 +546,10 @@ export function useBubblesGame(isDemoMode: boolean) {
         setTxMessage("");
       }
     }
-  }, [isDemoMode, isConnected, publicClient, contractAddress, writeContractAsync, loadLiveChainData]);
+  }, [isLocalMode, isConnected, publicClient, contractAddress, writeContractAsync, loadLiveChainData]);
 
   const executeBoostConnection = useCallback(async (fromId: string, toId: string) => {
-    if (isDemoMode) {
+    if (isLocalMode) {
       setConnections((prev) =>
         prev.map((c) =>
           (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId)
@@ -593,10 +594,10 @@ export function useBubblesGame(isDemoMode: boolean) {
         setTxMessage("");
       }
     }
-  }, [isDemoMode, isConnected, publicClient, contractAddress, writeContractAsync, loadLiveChainData]);
+  }, [isLocalMode, isConnected, publicClient, contractAddress, writeContractAsync, loadLiveChainData]);
 
   const executeClaimRewards = useCallback(async (nodeKeys: string[]) => {
-    if (isDemoMode) {
+    if (isLocalMode) {
       setPendingNodeRewards((prev) => {
         const next = new Map(prev);
         nodeKeys.forEach((k) => next.delete(k));
@@ -621,7 +622,7 @@ export function useBubblesGame(isDemoMode: boolean) {
       setPendingTx(false);
       setTxMessage("");
     }
-  }, [isDemoMode, isConnected, contractAddress, writeContractAsync, loadLiveChainData]);
+  }, [isLocalMode, isConnected, contractAddress, writeContractAsync, loadLiveChainData]);
 
   return {
     nodes,

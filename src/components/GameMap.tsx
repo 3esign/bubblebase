@@ -20,7 +20,6 @@ export interface GameConnection {
 }
 
 interface GameMapProps {
-  isDemoMode: boolean;
   nodes: GameNode[];
   connections: GameConnection[];
   selectedNodeId: string | null;

@@ -40,8 +40,7 @@ const initialAgents: Agent[] = MOCK_AGENT_ADDRESSES.map((addr, i) => ({
 }));
 
 export default function Home() {
-  const [isDemoMode, setIsDemoMode] = useState(true);
-  const [showAboutModal, setShowAboutModal] = useState(false);
+  const [appMode, setAppMode] = useState<"demo" | "simulation" | "live">("demo");
   const [isMacroSimMode, setIsMacroSimMode] = useState(false);
 
   // 2. Core Game Hook (handles live blockchain data and basic local state)
@@ -60,8 +59,6 @@ export default function Home() {
     selectedNode,
     targetNode,
     pendingNodeRewards,
-    selectedNodeConnections,
-    pendingRequestsToSelected,
     placementCoords,
     setPlacementCoords,
     calculateDynamicFee,
@@ -71,8 +68,10 @@ export default function Home() {
     executeNurtureConnection,
     executeBoostConnection,
     executePlaceNode,
+    selectedNodeConnections,
+    pendingRequestsToSelected,
     txMessage,
-  } = useBubblesGame(isDemoMode);
+  } = useBubblesGame(appMode);
 
   // 3. Simulation Engine Hook
   const {
@@ -88,27 +87,29 @@ export default function Home() {
     setAgents: setSimAgents,
   } = useSimulation(initialWorld, initialAgents);
 
-  // Sync simulation world to game display when in demo mode
+  // Sync simulation world to game display when in simulation mode
   useEffect(() => {
-    if (isDemoMode) {
+    if (appMode === "simulation") {
       setNodes(simWorld.nodes);
       setConnections(simWorld.connections);
     }
-  }, [isDemoMode, simWorld.nodes, simWorld.connections, setNodes, setConnections]);
+  }, [appMode, simWorld.nodes, simWorld.connections, setNodes, setConnections]);
 
-  // Live network stays empty; pause and reset simulation when leaving demo
+  // Reset simulation when switching away from simulation mode
   useEffect(() => {
-    if (!isDemoMode) {
+    if (appMode !== "simulation") {
       setSimIsRunning(false);
       setSimWorld({ ...initialWorld, timeSeconds: Math.floor(Date.now() / 1000) });
       setSimAgents(initialAgents);
-      setNodes([]);
-      setConnections([]);
+      if (appMode === "live") {
+        setNodes([]);
+        setConnections([]);
+      }
     }
-  }, [isDemoMode, setSimIsRunning, setSimWorld, setSimAgents, setNodes, setConnections]);
+  }, [appMode, setSimIsRunning, setSimWorld, setSimAgents, setNodes, setConnections]);
 
   const agentNodeIds = useMemo(() => {
-    if (!isDemoMode) return new Set<string>();
+    if (appMode !== "simulation") return new Set<string>();
     const ids = new Set<string>();
     simWorld.nodes.forEach((n) => {
       if (MOCK_AGENT_ADDRESSES.includes(n.owner)) {
@@ -116,15 +117,99 @@ export default function Home() {
       }
     });
     return ids;
-  }, [isDemoMode, simWorld.nodes]);
+  }, [appMode, simWorld.nodes]);
 
   const handleClearGrid = () => {
     handleResetGrid();
-    if (isDemoMode) {
+    if (appMode === "simulation") {
       setSimIsRunning(false);
       setSimWorld({ ...initialWorld, timeSeconds: Math.floor(Date.now() / 1000) });
       setSimAgents(initialAgents);
     }
+  };
+
+  const handleExportAboutText = () => {
+    const docText = `========================================================================
+BUBBLES: BASE L2 CIVILIZATION GAME - TECHNICAL DOCUMENTATION
+========================================================================
+
+BubbleBase is an isometric, decentralized civilization game built directly on the Base L2 Ethereum network. In this dystopian, cyberpunk world, raw coordinate grid space is real estate, and survival depends on data bandwidth and network connectivity.
+
+------------------------------------------------------------------------
+1. GAMEPLAY & MECHANICS
+------------------------------------------------------------------------
+* Claim Your Real Estate (Place Nodes): Click on any empty intersection on the grid to deploy a basic infrastructure Node (Pylon). This registers your node permanently on-chain.
+* Expand Your Net worth (Forge Connections): Select your node, then click another player's node to request a connection. Bandwidth is strength - as your node accumulates links, it procedurally transforms from a humble Pylon into a towering Citadel.
+* Earn Passive Yield (Collect Rewards): Every time another player connects nearby, nurtures a link, or boosts their network speed, they pay fees into a global reward pool. You can claim your accumulated ETH yield at any time directly through the dApp dashboard.
+* Prevent Grid Decay (Nurture & Boost): Connections suffer from entropy and decay after 24 hours, turning into dead grey wires. Reset the timer by Nurturing the link, or Boost it to overclock your throughput and visual power streams.
+
+------------------------------------------------------------------------
+2. TECHNICAL ARCHITECTURE & STATE ENGINE
+------------------------------------------------------------------------
+* Coordinate System: Nodes are indexed using a custom 64-bit coordinate compression scheme mapping 32-bit signed integers (int32 x, int32 y) to a single uint64 key:
+    function encodeCoordinate(int32 x, int32 y) returns (uint64) {
+        return (uint64(uint32(x)) << 32) | uint64(uint32(y));
+    }
+  This eliminates nested mapping layouts (mapping(int32 => mapping(int32 => address))) and saves massive gas on-chain by maintaining a flat mapping(uint64 => address) public nodes.
+* Undirected Graph Connections: Since connections are undirected, lookup keys are generated deterministically by sorting node coordinate keys before computing a keccak256 hash:
+    function getConnKey(uint64 a, uint64 b) returns (bytes32) {
+        return a < b ? keccak256(abi.encodePacked(a, b)) : keccak256(abi.encodePacked(b, a));
+    }
+
+------------------------------------------------------------------------
+3. PARAMETRIC fee FORMULAS
+------------------------------------------------------------------------
+* Placement Fee:
+    Placement Fee = ACTION_FEE = 0.00001 ETH
+* Dynamic Connection Fee:
+    Connection Fee = ACTION_FEE + ConnectionPremium + DistancePremium
+    ConnectionPremium = max(0, toNodeConnections - fromNodeConnections) * 0.000005 ETH
+    DistancePremium = ManhattanDistance * 0.000001 ETH
+    ManhattanDistance = |x2 - x1| + |y2 - y1|
+* Nurture Fee:
+    Nurture Fee = 0.000002 ETH + (ManhattanDistance * 0.0000002 ETH)
+* Boost Fee:
+    Boost Fee = 0.000005 ETH + (ManhattanDistance * 0.0000005 ETH)
+
+------------------------------------------------------------------------
+4. DeFi REWARD ACCUMULATION
+------------------------------------------------------------------------
+Instead of running expensive, O(n) loops over all nodes, the contract implements an O(1) reward accumulator:
+* 5% Creator Fee is routed instantly to the developer treasury.
+* 50% of Connection fees and 95% of Nurture/Boost fees go to the global reward pool.
+* rewardPerConnection tracks cumulative distributed ETH per unit connection weight, scaled by 10^18:
+    delta rewardPerConnection = (FeeContribution * 10^18) / totalConnections
+* Pending rewards are calculated lazily when a node state is updated:
+    PendingReward(node) += (connectionCounts[node] * rewardPerConnection / 10^18) - nodeRewardDebt[node]
+    nodeRewardDebt[node] = connectionCounts[node] * rewardPerConnection / 10^18
+
+------------------------------------------------------------------------
+5. AI AGENT SIMULATION ENGINE
+------------------------------------------------------------------------
+* Tick loop proceeds in hours of simulated time.
+* MathDriver decides actions based on heuristic rules (maintainer/expansionist/defensive).
+* AIDriver serializes current node clusters and connection states, passing them to Next.js LLM API proxies to make strategic gameplay decisions (supports OpenAI, Anthropic, Gemini, Ollama).
+
+------------------------------------------------------------------------
+6. CORE CODE DIRECTORIES
+------------------------------------------------------------------------
+* /src/app/page.tsx: App entry point, layout, mode controls, simulation orchestrator.
+* /src/components/GameMap.tsx: 2.5D Isometric procedurally generated graphics engine powered by PIXI.js.
+* /src/hooks/useBubblesGame.ts: On-chain Web3 connection hooks, transaction wrappers, dynamic fee calculations.
+* /src/hooks/useSimulation.ts: Simulation agent state hooks, metric snapshots recorder.
+* /hardhat_project/contracts/Bubbles.sol: Smart contract state engine.
+
+========================================================================
+BubbleBase Civilization Game - 3esign - 2026. All rights reserved.
+========================================================================`;
+
+    const blob = new Blob([docText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "bubblebase-documentation.txt";
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -132,7 +217,6 @@ export default function Home() {
       
       {/* 2.5D Interactive Canvas */}
       <GameMap
-        isDemoMode={isDemoMode}
         nodes={nodes}
         connections={connections}
         selectedNodeId={selectedNodeId}
@@ -146,16 +230,16 @@ export default function Home() {
 
       {/* Top Header & Settings Menu */}
       <Header
-        isDemoMode={isDemoMode}
-        setIsDemoMode={setIsDemoMode}
-        setShowAboutModal={setShowAboutModal}
+        appMode={appMode}
+        setAppMode={setAppMode}
+        onExportAboutText={handleExportAboutText}
       />
 
       {/* Help Modal (Bottom Left) */}
       <MapControlsPanel />
 
       {/* Mode Toggle Button for standard vs macro math view */}
-      {isDemoMode && (
+      {appMode === "simulation" && (
         <div className="absolute top-20 left-6 flex gap-1.5 pointer-events-auto z-[60] bg-[#070814]/90 border border-white/10 p-1 rounded-xl shadow-lg backdrop-blur-sm">
           <button
             onClick={() => setIsMacroSimMode(false)}
@@ -180,8 +264,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Simulation Engine Panel (Demo Mode Only) */}
-      {isDemoMode && (
+      {/* Simulation Engine Panel (Simulation Mode Only) */}
+      {appMode === "simulation" && (
         isMacroSimMode ? (
           <MacroSimulationPanel
             world={simWorld}
@@ -261,41 +345,6 @@ export default function Home() {
           Clear Grid
         </button>
       </div>
-
-      {/* About Modal */}
-      {showAboutModal && (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
-          <div className="bg-[#0a0a1a] border border-white/10 p-8 rounded-3xl max-w-xl w-full flex flex-col gap-6 shadow-2xl relative">
-            <button
-              onClick={() => setShowAboutModal(false)}
-              className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
-            >
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <h2 className="text-2xl font-bold text-white tracking-tight">About BUBBLES</h2>
-            <div className="space-y-4 text-sm text-white/70 leading-relaxed">
-              <p>
-                BUBBLES is an experimental, fully on-chain civilization simulation game built on Base L2. 
-                It explores dynamic economic routing, attention decay, and AI-agent interactions within a shared spatial grid.
-              </p>
-              <p>
-                <strong>The Core Loop:</strong>
-              </p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>Players (humans or AI) pay base fees to deploy Nodes.</li>
-                <li>Players pay dynamic fees to connect Nodes (based on distance & popularity).</li>
-                <li>50% of connection fees go to the connected Node&apos;s owner; 50% funds a global pool.</li>
-                <li>Connections naturally decay. Players must burn ETH to &quot;Nurture&quot; them, fueling the global pool.</li>
-              </ul>
-              <p>
-                <strong>The Goal:</strong> Accumulate the most connections and optimally route attention to capture the largest share of the global reward pool.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

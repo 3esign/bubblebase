@@ -1,12 +1,12 @@
 import React from "react";
 
 interface HeaderProps {
-  isDemoMode: boolean;
-  setIsDemoMode: (val: boolean) => void;
-  setShowAboutModal: (val: boolean) => void;
+  appMode: "demo" | "simulation" | "live";
+  setAppMode: (val: "demo" | "simulation" | "live") => void;
+  onExportAboutText: () => void;
 }
 
-export function Header({ isDemoMode, setIsDemoMode, setShowAboutModal }: HeaderProps) {
+export function Header({ appMode, setAppMode, onExportAboutText }: HeaderProps) {
   return (
     <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start pointer-events-none">
       {/* Brand */}
@@ -38,16 +38,16 @@ export function Header({ isDemoMode, setIsDemoMode, setShowAboutModal }: HeaderP
           </a>
           <div className="w-px h-4 bg-white/20"></div>
           <button
-            onClick={() => setShowAboutModal(true)}
+            onClick={onExportAboutText}
             className="text-gray-400 hover:text-white transition-colors text-sm font-semibold"
           >
             About
           </button>
           <div className="w-px h-4 bg-white/20"></div>
           <button
-            onClick={() => setIsDemoMode(true)}
+            onClick={() => setAppMode("demo")}
             className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 ${
-              isDemoMode
+              appMode === "demo"
                 ? "bg-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.4)]"
                 : "text-gray-400 hover:text-white hover:bg-white/5"
             }`}
@@ -55,9 +55,19 @@ export function Header({ isDemoMode, setIsDemoMode, setShowAboutModal }: HeaderP
             Demo Mode
           </button>
           <button
-            onClick={() => setIsDemoMode(false)}
+            onClick={() => setAppMode("simulation")}
             className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 ${
-              !isDemoMode
+              appMode === "simulation"
+                ? "bg-purple-600 text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]"
+                : "text-gray-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            Simulation Mode
+          </button>
+          <button
+            onClick={() => setAppMode("live")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 ${
+              appMode === "live"
                 ? "bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]"
                 : "text-gray-400 hover:text-white hover:bg-white/5"
             }`}
@@ -66,7 +76,7 @@ export function Header({ isDemoMode, setIsDemoMode, setShowAboutModal }: HeaderP
           </button>
         </div>
 
-        {!isDemoMode && (
+        {appMode === "live" && (
           <div className="bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-2xl shadow-2xl">
             <button
               disabled
