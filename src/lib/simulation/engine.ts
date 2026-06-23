@@ -17,6 +17,14 @@ export interface Agent {
   logs: any[];
 }
 
+export interface EconomyParams {
+  actionFee: number;
+  connectionLifetime: number;
+  distancePremiumMult: number;
+  poolContributionConnection: number;
+  poolContributionNurtureBoost: number;
+}
+
 export interface WorldState {
   tick: number;
   timeSeconds: number; // simulated unix timestamp
@@ -26,6 +34,7 @@ export interface WorldState {
   totalConnections: number;
   nodeRewardDebt: Map<string, number>;
   nodePendingRewards: Map<string, number>;
+  params?: EconomyParams;
 }
 
 export type AgentAction =
@@ -41,9 +50,17 @@ export interface Driver {
 
 // Function to apply an action to the world state (returns a mutated world state or applies in place)
 export function applyAction(agent: Agent, action: AgentAction, world: WorldState): boolean {
+  const params = world.params || {
+    actionFee: 0.00001,
+    connectionLifetime: 86400,
+    distancePremiumMult: 0.000001,
+    poolContributionConnection: 0.50,
+    poolContributionNurtureBoost: 0.95,
+  };
+
   if (action.type === "PLACE_NODE") {
     const { x, y } = action.params;
-    const cost = ACTION_FEE;
+    const cost = params.actionFee;
     if (agent.spent + cost > agent.budget) return false;
 
     // Check collision
@@ -68,11 +85,16 @@ export function applyAction(agent: Agent, action: AgentAction, world: WorldState
     );
     if (exists) return false;
 
-    const costInfo = calculateConnectionFee(fromNode, toNode);
-    if (agent.spent + costInfo.total > agent.budget) return false;
+    // Calculate dynamic connection fee using parameters
+    const dist = Math.abs(toNode.x - fromNode.x) + Math.abs(toNode.y - fromNode.y);
+    let connectionPremium = 0;
+    if (toNode.connectionsCount > fromNode.connectionsCount) {
+      connectionPremium = (toNode.connectionsCount - fromNode.connectionsCount) * 0.000005;
+    }
+    const cost = params.actionFee + connectionPremium + dist * params.distancePremiumMult;
 
-    // In simulation, we bypass the "request -> approve" flow and instantly approve it for speed.
-    // Real chain uses request + approve.
+    if (agent.spent + cost > agent.budget) return false;
+
     world.connections.push({
       from: fromId,
       to: toId,
@@ -87,12 +109,12 @@ export function applyAction(agent: Agent, action: AgentAction, world: WorldState
     world.totalConnections += 2;
 
     // Update rewards pool
-    const rewardFee = costInfo.total * 0.50;
+    const rewardFee = cost * params.poolContributionConnection;
     if (world.totalConnections > 2) {
       world.rewardPerConnection += rewardFee / world.totalConnections;
     }
 
-    agent.spent += costInfo.total;
+    agent.spent += cost;
     return true;
   }
 
@@ -107,13 +129,16 @@ export function applyAction(agent: Agent, action: AgentAction, world: WorldState
     const toNode = world.nodes.find((n) => n.id === toId);
     if (!fromNode || !toNode) return false;
 
-    const cost = calculateNurtureFee(fromNode, toNode);
+    // Calculate dynamic nurture fee
+    const dist = Math.abs(toNode.x - fromNode.x) + Math.abs(toNode.y - fromNode.y);
+    const cost = 0.000002 + dist * 0.0000002;
+
     if (agent.spent + cost > agent.budget) return false;
 
     conn.lastNurturedAt = world.timeSeconds;
     
     // Update rewards pool
-    const rewardFee = cost * 0.95; // 5% creator fee simulated
+    const rewardFee = cost * params.poolContributionNurtureBoost;
     if (world.totalConnections > 0) {
       world.rewardPerConnection += rewardFee / world.totalConnections;
     }
@@ -133,14 +158,17 @@ export function applyAction(agent: Agent, action: AgentAction, world: WorldState
     const toNode = world.nodes.find((n) => n.id === toId);
     if (!fromNode || !toNode) return false;
 
-    const cost = calculateBoostFee(fromNode, toNode);
+    // Calculate dynamic boost fee
+    const dist = Math.abs(toNode.x - fromNode.x) + Math.abs(toNode.y - fromNode.y);
+    const cost = 0.000005 + dist * 0.0000005;
+
     if (agent.spent + cost > agent.budget) return false;
 
     conn.boostMultiplier = (conn.boostMultiplier || 100) + 50;
     conn.lastNurturedAt = world.timeSeconds;
 
     // Update rewards pool
-    const rewardFee = cost * 0.95;
+    const rewardFee = cost * params.poolContributionNurtureBoost;
     if (world.totalConnections > 0) {
       world.rewardPerConnection += rewardFee / world.totalConnections;
     }

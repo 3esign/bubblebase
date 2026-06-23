@@ -12,6 +12,7 @@ import { MapControlsPanel } from "../components/game/MapControlsPanel";
 import { TransactionToast } from "../components/game/TransactionToast";
 import { NodeDetailsPanel } from "../components/game/NodeDetailsPanel";
 import { SimulationPanel } from "../components/SimulationPanel";
+import { MacroSimulationPanel } from "../components/MacroSimulationPanel";
 import { MOCK_AGENT_ADDRESSES } from "../lib/mockData";
 
 const GameMap = dynamic(() => import("../components/GameMap"), { ssr: false });
@@ -19,6 +20,7 @@ const GameMap = dynamic(() => import("../components/GameMap"), { ssr: false });
 export default function Home() {
   const [isDemoMode, setIsDemoMode] = useState(true);
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [isMacroSimMode, setIsMacroSimMode] = useState(false);
 
   // 1. Core Game Hook (handles live blockchain data and basic local state)
   const game = useBubblesGame(isDemoMode);
@@ -114,19 +116,60 @@ export default function Home() {
       {/* Help Modal (Bottom Left) */}
       <MapControlsPanel />
 
+      {/* Mode Toggle Button for standard vs macro math view */}
+      {isDemoMode && (
+        <div className="absolute top-20 left-6 flex gap-1.5 pointer-events-auto z-[60] bg-[#070814]/90 border border-white/10 p-1 rounded-xl shadow-lg backdrop-blur-sm">
+          <button
+            onClick={() => setIsMacroSimMode(false)}
+            className={`px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all duration-200 ${
+              !isMacroSimMode
+                ? "bg-blue-600/80 text-white border border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)] hover:bg-blue-600"
+                : "border border-transparent text-white/50 hover:text-white"
+            }`}
+          >
+            Standard View
+          </button>
+          <button
+            onClick={() => setIsMacroSimMode(true)}
+            className={`px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all duration-200 ${
+              isMacroSimMode
+                ? "bg-emerald-600/80 text-white border border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)] hover:bg-emerald-600"
+                : "border border-transparent text-white/50 hover:text-white"
+            }`}
+          >
+            Macro Math Model
+          </button>
+        </div>
+      )}
+
       {/* Simulation Engine Panel (Demo Mode Only) */}
       {isDemoMode && (
-        <SimulationPanel
-          world={simulation.world}
-          agents={simulation.agents}
-          metrics={simulation.metrics}
-          isRunning={simulation.isRunning}
-          setIsRunning={simulation.setIsRunning}
-          speed={simulation.speed}
-          setSpeed={simulation.setSpeed}
-          runTicks={simulation.runTicks}
-          setAgents={simulation.setAgents}
-        />
+        isMacroSimMode ? (
+          <MacroSimulationPanel
+            world={simulation.world}
+            agents={simulation.agents}
+            metrics={simulation.metrics}
+            isRunning={simulation.isRunning}
+            setIsRunning={simulation.setIsRunning}
+            speed={simulation.speed}
+            setSpeed={simulation.setSpeed}
+            runTicks={simulation.runTicks}
+            setWorld={simulation.setWorld}
+            setAgents={simulation.setAgents}
+          />
+        ) : (
+          <SimulationPanel
+            world={simulation.world}
+            agents={simulation.agents}
+            metrics={simulation.metrics}
+            isRunning={simulation.isRunning}
+            setIsRunning={simulation.setIsRunning}
+            speed={simulation.speed}
+            setSpeed={simulation.setSpeed}
+            runTicks={simulation.runTicks}
+            setAgents={simulation.setAgents}
+          />
+        )
       )}
 
       {/* Interaction Card (Right Sidebar) */}

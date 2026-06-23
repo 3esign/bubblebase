@@ -453,12 +453,22 @@ export default function GameMap({
           const isUserOwned = node.owner.toLowerCase() === currentUserAddr?.toLowerCase();
           const isSelected = node.id === currentSelectedId;
           const isAgentOwned = currentAgentNodeIds?.has(node.id);
-          const radius = 40 + Math.min(node.connectionsCount * 12, 100);
-          const fillColor = isSelected ? 0xf59e0b : isUserOwned ? 0x10b881 : isAgentOwned ? 0x8b5cf6 : 0x3b82f6;
+          
+          // Influence Territories: Inner core + outer boundary fields
+          const coreRadius = 40 + Math.min(node.connectionsCount * 12, 100);
+          const outerRadius = 140 + Math.min(node.connectionsCount * 20, 160);
+          const territoryColor = isSelected ? 0xf59e0b : isUserOwned ? 0x10b881 : isAgentOwned ? 0x8b5cf6 : 0x3b82f6;
           
           const p = toIso(node.x * 100, node.y * 100, 0);
-          fieldsGraphics.ellipse(p.x, p.y, radius, radius * ISO_PITCH);
-          fieldsGraphics.fill({ color: fillColor, alpha: 0.12 });
+          
+          // Inner Node Core Field
+          fieldsGraphics.ellipse(p.x, p.y, coreRadius, coreRadius * ISO_PITCH);
+          fieldsGraphics.fill({ color: territoryColor, alpha: 0.12 });
+          
+          // Outer Influence territory zone
+          fieldsGraphics.ellipse(p.x, p.y, outerRadius, outerRadius * ISO_PITCH);
+          fieldsGraphics.fill({ color: territoryColor, alpha: 0.035 });
+          fieldsGraphics.stroke({ width: 0.8, color: territoryColor, alpha: 0.15 });
         });
 
         heatMapLinks.clear();
@@ -473,7 +483,9 @@ export default function GameMap({
           const p2 = toIso(toNode.x * 100, toNode.y * 100, getH(toNode.connectionsCount));
 
           const lastNurtured = conn.lastNurturedAt || 0;
-          const isDecayed = !conn.isPending && lastNurtured > 0 && (Date.now() / 1000 > lastNurtured + 86400);
+          const timeElapsed = Date.now() / 1000 - lastNurtured;
+          const isDecayed = !conn.isPending && lastNurtured > 0 && timeElapsed > 86400;
+          const isNearDecay = !conn.isPending && lastNurtured > 0 && !isDecayed && (86400 - timeElapsed < 21600); // 6 hours warning limit
 
           if (isDecayed) {
             explicitLinks.moveTo(p1.x, p1.y); explicitLinks.lineTo(p2.x, p2.y);
@@ -485,6 +497,12 @@ export default function GameMap({
             explicitLinks.stroke({ width: 2, color: 0xf59e0b, alpha: 0.7 });
             heatMapLinks.moveTo(p1.x, p1.y); heatMapLinks.lineTo(p2.x, p2.y);
             heatMapLinks.stroke({ width: 15, color: 0xf59e0b, alpha: 0.2 });
+          } else if (isNearDecay) {
+            // Decay warning line (Amber glow + Red warnings)
+            drawDashedLine(explicitLinks, p1.x, p1.y, p2.x, p2.y, 4, 3);
+            explicitLinks.stroke({ width: 2, color: 0xef4444, alpha: 0.85 });
+            heatMapLinks.moveTo(p1.x, p1.y); heatMapLinks.lineTo(p2.x, p2.y);
+            heatMapLinks.stroke({ width: 20, color: 0xf59e0b, alpha: 0.25 });
           } else {
             const mult = (conn.boostMultiplier || 100) / 100;
             
