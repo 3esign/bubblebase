@@ -68,26 +68,60 @@ export function useBubblesGame(appMode: "demo" | "simulation" | "live") {
       setTxMessage("Querying smart contract events...");
       setPendingTx(true);
 
-      const [placedLogs, requestedLogs, approvedLogs] = await Promise.all([
-        publicClient.getContractEvents({
-          address: contractAddress,
-          abi: BUBBLES_ABI,
-          eventName: "NodePlaced",
-          fromBlock: 0n,
-        }),
-        publicClient.getContractEvents({
-          address: contractAddress,
-          abi: BUBBLES_ABI,
-          eventName: "ConnectionRequested",
-          fromBlock: 0n,
-        }),
-        publicClient.getContractEvents({
-          address: contractAddress,
-          abi: BUBBLES_ABI,
-          eventName: "ConnectionApproved",
-          fromBlock: 0n,
-        }),
-      ]);
+      let placedLogs: any[] = [];
+      let requestedLogs: any[] = [];
+      let approvedLogs: any[] = [];
+
+      try {
+        [placedLogs, requestedLogs, approvedLogs] = await Promise.all([
+          publicClient.getContractEvents({
+            address: contractAddress,
+            abi: BUBBLES_ABI,
+            eventName: "NodePlaced",
+            fromBlock: 0n,
+          }),
+          publicClient.getContractEvents({
+            address: contractAddress,
+            abi: BUBBLES_ABI,
+            eventName: "ConnectionRequested",
+            fromBlock: 0n,
+          }),
+          publicClient.getContractEvents({
+            address: contractAddress,
+            abi: BUBBLES_ABI,
+            eventName: "ConnectionApproved",
+            fromBlock: 0n,
+          }),
+        ]);
+      } catch (e) {
+        console.warn("Querying from block 0 failed, trying last 50,000 blocks:", e);
+        try {
+          const currentBlock = await publicClient.getBlockNumber();
+          const fromBlock = currentBlock - 50000n > 0n ? currentBlock - 50000n : 0n;
+          [placedLogs, requestedLogs, approvedLogs] = await Promise.all([
+            publicClient.getContractEvents({
+              address: contractAddress,
+              abi: BUBBLES_ABI,
+              eventName: "NodePlaced",
+              fromBlock,
+            }),
+            publicClient.getContractEvents({
+              address: contractAddress,
+              abi: BUBBLES_ABI,
+              eventName: "ConnectionRequested",
+              fromBlock,
+            }),
+            publicClient.getContractEvents({
+              address: contractAddress,
+              abi: BUBBLES_ABI,
+              eventName: "ConnectionApproved",
+              fromBlock,
+            }),
+          ]);
+        } catch (innerErr) {
+          console.error("Failed querying last 50,000 blocks:", innerErr);
+        }
+      }
 
       const loadedNodes: GameNode[] = [];
       const loadedConns: GameConnection[] = [];
@@ -224,6 +258,8 @@ export function useBubblesGame(appMode: "demo" | "simulation" | "live") {
       setNodes([]);
       setConnections([]);
       setPendingNodeRewards(new Map());
+      setPendingTx(false);
+      setTxMessage("");
     }, 0);
     return () => clearTimeout(timer);
   }, [appMode]);
