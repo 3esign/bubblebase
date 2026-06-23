@@ -2,7 +2,7 @@ import React from "react";
 
 export function MapControlsPanel() {
   return (
-    <div className="absolute bottom-6 left-6 w-80 flex flex-col gap-4 pointer-events-auto">
+    <div className="absolute bottom-6 right-6 w-80 flex flex-col gap-4 pointer-events-auto z-40">
       <div className="glass-panel p-5 rounded-2xl flex flex-col gap-3">
         <h3 className="text-sm font-bold text-blue-400 tracking-wide uppercase">
           Map Controls

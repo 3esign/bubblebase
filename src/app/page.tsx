@@ -308,7 +308,7 @@ BubbleBase Civilization Game - 3esign - 2026. All rights reserved.
       )}
 
       {/* Interaction Card (Right Sidebar) */}
-      <div className="absolute top-32 right-6 w-96 flex flex-col gap-4 pointer-events-auto max-h-[80vh] overflow-y-auto pr-1 z-40">
+      <div className="absolute top-32 right-6 w-96 flex flex-col gap-4 pointer-events-auto max-h-[calc(100vh-360px)] overflow-y-auto pr-1 z-40">
         <TransactionToast pendingTx={pendingTx} txMessage={txMessage} />
         
         <NodeDetailsPanel

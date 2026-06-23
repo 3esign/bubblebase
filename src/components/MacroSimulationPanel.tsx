@@ -127,7 +127,7 @@ export function MacroSimulationPanel({
   }, [agents, world.nodes]);
 
   return (
-    <div className="absolute top-28 left-6 w-96 flex flex-col gap-4 pointer-events-auto max-h-[calc(100vh-320px)] overflow-y-auto pr-1 z-40">
+    <div className="absolute top-28 left-6 w-96 flex flex-col gap-4 pointer-events-auto max-h-[calc(100vh-100px)] overflow-y-auto pr-1 z-40">
       
       {/* Simulation Master Controls */}
       <div className="glass-panel p-5 rounded-2xl flex flex-col gap-4 border-emerald-500/30">
