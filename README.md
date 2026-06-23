@@ -13,13 +13,9 @@ BubbleBase is an isometric, decentralized civilization game built directly on th
 
 Here is the visual progression of the Grid, showcasing zoom levels, nodes, connections, and the isometric graphics engine:
 
-```carousel
 ![Gameplay Map Overview](public/gameplay_map.png)
-<!-- slide -->
 ![Medium Zoom Node Cluster](public/gameplay_mid_zoom.png)
-<!-- slide -->
 ![Detailed Zoom Wires and Citadels](public/gameplay_detailed_zoom.png)
-```
 
 ### 👤 The Layman's Quickstart
 

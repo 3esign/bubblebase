@@ -45,5 +45,3 @@ hardhat_project/node_modules/
 hardhat_project/artifacts/
 hardhat_project/cache/
 hardhat_project/typechain-types/
-
-.vercel

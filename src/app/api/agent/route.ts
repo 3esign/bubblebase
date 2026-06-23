@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const { provider, model, systemPrompt, gameState, actionHistory } = await request.json();
-    const apiKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+    const { provider, model, systemPrompt, gameState, actionHistory, apiKey: clientApiKey } = await request.json();
+    const apiKey = clientApiKey || process.env[`${provider.toUpperCase()}_API_KEY`];
     
     if (!apiKey) {
       return NextResponse.json({ action: 'HOLD', params: { reason: `Missing API key for ${provider}` }, reasoning: 'Server missing config.' });
