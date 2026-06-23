@@ -17,77 +17,113 @@ import { MOCK_AGENT_ADDRESSES } from "../lib/mockData";
 
 const GameMap = dynamic(() => import("../components/GameMap"), { ssr: false });
 
+// 1. Initial Static Simulation States defined outside the component to remain pure
+const initialWorld: WorldState = {
+  tick: 0,
+  timeSeconds: 1782176240, // Static baseline epoch timestamp
+  nodes: [],
+  connections: [],
+  rewardPerConnection: 0,
+  totalConnections: 0,
+  nodeRewardDebt: new Map(),
+  nodePendingRewards: new Map(),
+};
+
+const initialAgents: Agent[] = MOCK_AGENT_ADDRESSES.map((addr, i) => ({
+  id: `Agent-${i+1}`,
+  walletAddress: addr,
+  driverType: i % 2 === 0 ? "math" : "ai",
+  config: { strategy: i % 2 === 0 ? "expansionist" : "defensive" },
+  budget: 0.1,
+  spent: 0,
+  logs: [],
+}));
+
 export default function Home() {
   const [isDemoMode, setIsDemoMode] = useState(true);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [isMacroSimMode, setIsMacroSimMode] = useState(false);
 
-  // 1. Core Game Hook (handles live blockchain data and basic local state)
-  const game = useBubblesGame(isDemoMode);
-
-  // 2. Initial Simulation State
-  const initialWorld: WorldState = useMemo(() => ({
-    tick: 0,
-    timeSeconds: Math.floor(Date.now() / 1000),
-    nodes: [],
-    connections: [],
-    rewardPerConnection: 0,
-    totalConnections: 0,
-    nodeRewardDebt: new Map(),
-    nodePendingRewards: new Map(),
-  }), []);
-
-  const initialAgents: Agent[] = useMemo(() => {
-    return MOCK_AGENT_ADDRESSES.map((addr, i) => ({
-      id: `Agent-${i+1}`,
-      walletAddress: addr,
-      driverType: i % 2 === 0 ? "math" : "ai",
-      config: { strategy: i % 2 === 0 ? "expansionist" : "defensive" },
-      budget: 0.1,
-      spent: 0,
-      logs: [],
-    }));
-  }, []);
+  // 2. Core Game Hook (handles live blockchain data and basic local state)
+  const {
+    nodes,
+    setNodes,
+    connections,
+    setConnections,
+    selectedNodeId,
+    handleSelectNode,
+    activeUserAddress,
+    handlePlaceNodeCoords,
+    handleConnectNodes,
+    pendingTx,
+    handleResetGrid,
+    selectedNode,
+    targetNode,
+    pendingNodeRewards,
+    selectedNodeConnections,
+    pendingRequestsToSelected,
+    placementCoords,
+    setPlacementCoords,
+    calculateDynamicFee,
+    executeClaimRewards,
+    executeRequestConnection,
+    executeApproveConnection,
+    executeNurtureConnection,
+    executeBoostConnection,
+    executePlaceNode,
+    txMessage,
+  } = useBubblesGame(isDemoMode);
 
   // 3. Simulation Engine Hook
-  const simulation = useSimulation(initialWorld, initialAgents);
+  const {
+    world: simWorld,
+    agents: simAgents,
+    metrics: simMetrics,
+    isRunning: simIsRunning,
+    setIsRunning: setSimIsRunning,
+    speed: simSpeed,
+    setSpeed: setSimSpeed,
+    runTicks,
+    setWorld: setSimWorld,
+    setAgents: setSimAgents,
+  } = useSimulation(initialWorld, initialAgents);
 
   // Sync simulation world to game display when in demo mode
   useEffect(() => {
     if (isDemoMode) {
-      game.setNodes(simulation.world.nodes);
-      game.setConnections(simulation.world.connections);
+      setNodes(simWorld.nodes);
+      setConnections(simWorld.connections);
     }
-  }, [isDemoMode, simulation.world.tick]);
+  }, [isDemoMode, simWorld.nodes, simWorld.connections, setNodes, setConnections]);
 
   // Live network stays empty; pause and reset simulation when leaving demo
   useEffect(() => {
     if (!isDemoMode) {
-      simulation.setIsRunning(false);
-      simulation.setWorld({ ...initialWorld, timeSeconds: Math.floor(Date.now() / 1000) });
-      simulation.setAgents(initialAgents);
-      game.setNodes([]);
-      game.setConnections([]);
+      setSimIsRunning(false);
+      setSimWorld({ ...initialWorld, timeSeconds: Math.floor(Date.now() / 1000) });
+      setSimAgents(initialAgents);
+      setNodes([]);
+      setConnections([]);
     }
-  }, [isDemoMode]);
+  }, [isDemoMode, setSimIsRunning, setSimWorld, setSimAgents, setNodes, setConnections]);
 
   const agentNodeIds = useMemo(() => {
     if (!isDemoMode) return new Set<string>();
     const ids = new Set<string>();
-    simulation.world.nodes.forEach((n) => {
+    simWorld.nodes.forEach((n) => {
       if (MOCK_AGENT_ADDRESSES.includes(n.owner)) {
         ids.add(n.id);
       }
     });
     return ids;
-  }, [isDemoMode, simulation.world.tick]);
+  }, [isDemoMode, simWorld.nodes]);
 
   const handleClearGrid = () => {
-    game.handleResetGrid();
+    handleResetGrid();
     if (isDemoMode) {
-      simulation.setIsRunning(false);
-      simulation.setWorld({ ...initialWorld, timeSeconds: Math.floor(Date.now() / 1000) });
-      simulation.setAgents(initialAgents);
+      setSimIsRunning(false);
+      setSimWorld({ ...initialWorld, timeSeconds: Math.floor(Date.now() / 1000) });
+      setSimAgents(initialAgents);
     }
   };
 
@@ -97,14 +133,14 @@ export default function Home() {
       {/* 2.5D Interactive Canvas */}
       <GameMap
         isDemoMode={isDemoMode}
-        nodes={game.nodes}
-        connections={game.connections}
-        selectedNodeId={game.selectedNodeId}
-        onSelectNode={game.handleSelectNode}
-        userAddress={game.activeUserAddress}
-        onPlaceNode={game.handlePlaceNodeCoords}
-        onConnectNodes={game.handleConnectNodes}
-        pendingTx={game.pendingTx}
+        nodes={nodes}
+        connections={connections}
+        selectedNodeId={selectedNodeId}
+        onSelectNode={handleSelectNode}
+        userAddress={activeUserAddress}
+        onPlaceNode={handlePlaceNodeCoords}
+        onConnectNodes={handleConnectNodes}
+        pendingTx={pendingTx}
         agentNodeIds={agentNodeIds}
       />
 
@@ -148,53 +184,53 @@ export default function Home() {
       {isDemoMode && (
         isMacroSimMode ? (
           <MacroSimulationPanel
-            world={simulation.world}
-            agents={simulation.agents}
-            metrics={simulation.metrics}
-            isRunning={simulation.isRunning}
-            setIsRunning={simulation.setIsRunning}
-            speed={simulation.speed}
-            setSpeed={simulation.setSpeed}
-            runTicks={simulation.runTicks}
-            setWorld={simulation.setWorld}
-            setAgents={simulation.setAgents}
+            world={simWorld}
+            agents={simAgents}
+            metrics={simMetrics}
+            isRunning={simIsRunning}
+            setIsRunning={setSimIsRunning}
+            speed={simSpeed}
+            setSpeed={setSimSpeed}
+            runTicks={runTicks}
+            setWorld={setSimWorld}
+            setAgents={setSimAgents}
           />
         ) : (
           <SimulationPanel
-            world={simulation.world}
-            agents={simulation.agents}
-            metrics={simulation.metrics}
-            isRunning={simulation.isRunning}
-            setIsRunning={simulation.setIsRunning}
-            speed={simulation.speed}
-            setSpeed={simulation.setSpeed}
-            runTicks={simulation.runTicks}
-            setAgents={simulation.setAgents}
+            world={simWorld}
+            agents={simAgents}
+            metrics={simMetrics}
+            isRunning={simIsRunning}
+            setIsRunning={setSimIsRunning}
+            speed={simSpeed}
+            setSpeed={setSimSpeed}
+            runTicks={runTicks}
+            setAgents={setSimAgents}
           />
         )
       )}
 
       {/* Interaction Card (Right Sidebar) */}
       <div className="absolute top-32 right-6 w-96 flex flex-col gap-4 pointer-events-auto max-h-[80vh] overflow-y-auto pr-1 z-40">
-        <TransactionToast pendingTx={game.pendingTx} txMessage={game.txMessage} />
+        <TransactionToast pendingTx={pendingTx} txMessage={txMessage} />
         
         <NodeDetailsPanel
-          selectedNode={game.selectedNode}
-          targetNode={game.targetNode}
-          activeUserAddress={game.activeUserAddress}
-          pendingNodeRewards={game.pendingNodeRewards}
-          nodes={game.nodes}
-          selectedNodeConnections={game.selectedNodeConnections}
-          pendingRequestsToSelected={game.pendingRequestsToSelected}
-          placementCoords={game.placementCoords}
-          setPlacementCoords={game.setPlacementCoords}
-          calculateDynamicFee={game.calculateDynamicFee}
-          executeClaimRewards={game.executeClaimRewards}
-          executeRequestConnection={game.executeRequestConnection}
-          executeApproveConnection={game.executeApproveConnection}
-          executeNurtureConnection={game.executeNurtureConnection}
-          executeBoostConnection={game.executeBoostConnection}
-          executePlaceNode={game.executePlaceNode}
+          selectedNode={selectedNode}
+          targetNode={targetNode}
+          activeUserAddress={activeUserAddress}
+          pendingNodeRewards={pendingNodeRewards}
+          nodes={nodes}
+          selectedNodeConnections={selectedNodeConnections}
+          pendingRequestsToSelected={pendingRequestsToSelected}
+          placementCoords={placementCoords}
+          setPlacementCoords={setPlacementCoords}
+          calculateDynamicFee={calculateDynamicFee}
+          executeClaimRewards={executeClaimRewards}
+          executeRequestConnection={executeRequestConnection}
+          executeApproveConnection={executeApproveConnection}
+          executeNurtureConnection={executeNurtureConnection}
+          executeBoostConnection={executeBoostConnection}
+          executePlaceNode={executePlaceNode}
         />
       </div>
 
@@ -205,7 +241,7 @@ export default function Home() {
             Total Nodes
           </span>
           <span className="text-xl font-black text-white/90 font-mono tracking-tighter">
-            {game.nodes.length}
+            {nodes.length}
           </span>
         </div>
         <div className="w-px h-8 bg-white/10"></div>
@@ -214,7 +250,7 @@ export default function Home() {
             Active Links
           </span>
           <span className="text-xl font-black text-blue-400 font-mono tracking-tighter drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]">
-            {game.connections.filter((c) => !c.isPending).length}
+            {connections.filter((c) => !c.isPending).length}
           </span>
         </div>
         <div className="w-px h-8 bg-white/10"></div>

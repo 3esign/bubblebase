@@ -11,6 +11,9 @@ export interface MetricSnapshot {
   perAgent: Record<string, { spent: number; nodes: number }>;
 }
 
+const mathDriver = new MathDriver();
+const aiDriver = new AIDriver();
+
 export function useSimulation(initialWorld: WorldState, initialAgents: Agent[]) {
   const [world, setWorld] = useState<WorldState>(initialWorld);
   const [agents, setAgents] = useState<Agent[]>(initialAgents);
@@ -28,10 +31,7 @@ export function useSimulation(initialWorld: WorldState, initialAgents: Agent[]) 
   useEffect(() => { metricsRef.current = metrics; }, [metrics]);
   useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
 
-  const mathDriver = new MathDriver();
-  const aiDriver = new AIDriver();
-
-  const recordMetrics = (currentWorld: WorldState, currentAgents: Agent[]) => {
+  const recordMetrics = useCallback((currentWorld: WorldState, currentAgents: Agent[]) => {
     const snapshot: MetricSnapshot = {
       tick: currentWorld.tick,
       totalNodes: currentWorld.nodes.length,
@@ -46,9 +46,9 @@ export function useSimulation(initialWorld: WorldState, initialAgents: Agent[]) 
       };
     }
     setMetrics(prev => [...prev.slice(-100), snapshot]); // keep last 100 ticks
-  };
+  }, []);
 
-  const runTick = async () => {
+  const runTick = useCallback(async () => {
     // Clone world and agents for mutability in this tick
     const nextWorld = { ...worldRef.current, nodes: [...worldRef.current.nodes], connections: [...worldRef.current.connections] };
     const nextAgents = agentsRef.current.map(a => ({ ...a, logs: [...a.logs] }));
@@ -72,7 +72,7 @@ export function useSimulation(initialWorld: WorldState, initialAgents: Agent[]) 
     setWorld(nextWorld);
     setAgents(nextAgents);
     recordMetrics(nextWorld, nextAgents);
-  };
+  }, [recordMetrics]);
 
   const runTicks = async (n: number) => {
     for (let i = 0; i < n; i++) {
@@ -81,14 +81,16 @@ export function useSimulation(initialWorld: WorldState, initialAgents: Agent[]) 
   };
 
   useEffect(() => {
-    let timer: any;
+    let timer: ReturnType<typeof setInterval> | undefined;
     if (isRunning) {
       timer = setInterval(() => {
         runTick();
       }, 1000 / speed);
     }
-    return () => clearInterval(timer);
-  }, [isRunning, speed]);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isRunning, speed, runTick]);
 
   return {
     world,

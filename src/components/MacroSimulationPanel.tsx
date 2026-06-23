@@ -18,7 +18,6 @@ interface MacroSimulationPanelProps {
 export function MacroSimulationPanel({
   world,
   agents,
-  metrics,
   isRunning,
   setIsRunning,
   speed,
@@ -108,7 +107,7 @@ export function MacroSimulationPanel({
       avgSpent,
       maxSpent,
     };
-  }, [agents, world.tick]);
+  }, [agents]);
 
   const sortedLeaderboard = useMemo(() => {
     return [...agents]
@@ -123,7 +122,7 @@ export function MacroSimulationPanel({
       })
       .sort((a, b) => b.nodesCount - a.nodesCount || b.spent - a.spent)
       .slice(0, 10); // Top 10 agents
-  }, [agents, world.nodes, world.tick]);
+  }, [agents, world.nodes]);
 
   return (
     <div className="absolute top-28 left-6 w-96 flex flex-col gap-4 pointer-events-auto max-h-[85vh] overflow-y-auto pr-1 z-40">

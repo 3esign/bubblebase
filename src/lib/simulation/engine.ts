@@ -1,20 +1,22 @@
 import { GameNode, GameConnection } from "../../components/GameMap";
-import {
-  calculateConnectionFee,
-  calculateNurtureFee,
-  calculateBoostFee,
-  isConnectionDecayed,
-  ACTION_FEE,
-} from "./economyFormulas";
+
+export interface AgentConfig {
+  provider?: string;
+  apiKey?: string;
+  model?: string;
+  systemPrompt?: string;
+  strategy?: string;
+  [key: string]: unknown;
+}
 
 export interface Agent {
   id: string;
   walletAddress: string;
   driverType: "math" | "ai";
-  config: any; // specific configuration for the driver
+  config: AgentConfig; // specific configuration for the driver
   budget: number;
   spent: number;
-  logs: any[];
+  logs: string[];
 }
 
 export interface EconomyParams {

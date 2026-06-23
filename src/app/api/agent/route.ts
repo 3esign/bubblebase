@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { GameNode, GameConnection } from '../../../components/GameMap';
 
 export async function POST(request: Request) {
   try {
@@ -14,18 +15,18 @@ Analyze the current game state and select the best action.
 Current Wallet Address: ${gameState.walletAddress}
 
 Active Nodes (Total: ${gameState.nodes.length}):
-${JSON.stringify(gameState.nodes.slice(0, 30).map((n: any) => ({
+${JSON.stringify(gameState.nodes.slice(0, 30).map((n: GameNode) => ({
   id: n.id,
   owner: n.owner,
   x: n.x,
   y: n.y,
   connectionsCount: n.connectionsCount,
-  tier: n.tier
+  tier: n.connectionsCount >= 6 ? 3 : (n.connectionsCount >= 4 ? 2 : (n.connectionsCount >= 2 ? 1 : 0))
 })), null, 2)}
 ${gameState.nodes.length > 30 ? `...and ${gameState.nodes.length - 30} more nodes` : ''}
 
 Active Connections:
-${JSON.stringify(gameState.connections.slice(0, 30).map((c: any) => {
+${JSON.stringify(gameState.connections.slice(0, 30).map((c: GameConnection) => {
   const timeRemainingHours = c.lastNurturedAt ? (c.lastNurturedAt + 86400 - (Date.now() / 1000)) / 3600 : 0;
   return {
     id: `${c.from}-${c.to}`,
@@ -173,7 +174,7 @@ Respond with a JSON object matching this structure EXACTLY:
       } else {
         actionJson = JSON.parse(responseText);
       }
-    } catch (parseError) {
+    } catch {
       console.error('Failed to parse AI action:', responseText);
       actionJson = {
         action: 'HOLD',
@@ -183,10 +184,11 @@ Respond with a JSON object matching this structure EXACTLY:
     }
 
     return NextResponse.json(actionJson);
-  } catch (error: any) {
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
     return NextResponse.json({
       action: 'HOLD',
-      params: { reason: `Error: ${error.message}` },
+      params: { reason: `Error: ${err.message}` },
       reasoning: 'Internal API route error during execution.'
     }, { status: 500 });
   }

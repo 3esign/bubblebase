@@ -31,16 +31,17 @@ export class AIDriver implements Driver {
       
       // Parse data into AgentAction
       const action: AgentAction = {
-        type: data.action as any,
+        type: data.action as AgentAction["type"],
         params: data.params,
         reasoning: data.reasoning,
       };
 
       return action;
-    } catch (err: any) {
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
       return {
         type: "HOLD",
-        params: { reason: `Error contacting AI: ${err.message}` },
+        params: { reason: `Error contacting AI: ${errorMsg}` },
         reasoning: "Fallback to hold due to error."
       };
     }

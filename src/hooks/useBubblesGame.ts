@@ -194,7 +194,7 @@ export function useBubblesGame(isDemoMode: boolean) {
               args: [BigInt(nodeId)]
             }) as bigint;
             return { nodeId, reward };
-          } catch (e) {
+          } catch {
             return { nodeId, reward: 0n };
           }
         });
@@ -216,18 +216,24 @@ export function useBubblesGame(isDemoMode: boolean) {
 
   // Reset grid when switching modes — demo is filled by simulation sync in page.tsx
   useEffect(() => {
-    setSelectedNodeId(null);
-    setTargetNodeId(null);
-    setPlacementCoords(null);
-    setNodes([]);
-    setConnections([]);
-    setPendingNodeRewards(new Map());
+    const timer = setTimeout(() => {
+      setSelectedNodeId(null);
+      setTargetNodeId(null);
+      setPlacementCoords(null);
+      setNodes([]);
+      setConnections([]);
+      setPendingNodeRewards(new Map());
+    }, 0);
+    return () => clearTimeout(timer);
   }, [isDemoMode]);
 
   // Sync from chain only when wallet is connected to a deployed contract
   useEffect(() => {
     if (isLiveChainReady) {
-      loadLiveChainData();
+      const timer = setTimeout(() => {
+        loadLiveChainData();
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [isLiveChainReady, contractAddress, loadLiveChainData]);
 

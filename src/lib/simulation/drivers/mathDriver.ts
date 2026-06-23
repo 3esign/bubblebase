@@ -4,7 +4,7 @@ import { isConnectionDecayed } from "../economyFormulas";
 export class MathDriver implements Driver {
   async decide(agent: Agent, world: WorldState): Promise<AgentAction> {
     const config = agent.config || {};
-    const risk = config.risk ?? 50; // 0 to 100
+    const risk = typeof config.risk === 'number' ? config.risk : 50; // 0 to 100
     const strategy = config.strategy || 'expansionist';
 
     // Current agent nodes

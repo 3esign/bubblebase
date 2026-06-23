@@ -125,6 +125,14 @@ interface Pulse {
   color: number;
 }
 
+interface Spark {
+  x: number;
+  y: number;
+  z: number;
+  speed: number;
+  life: number;
+}
+
 interface NodeContainerData {
   container: PIXI.Container;
   groundPlate: PIXI.Graphics;
@@ -134,7 +142,7 @@ interface NodeContainerData {
   rotatingRings: PIXI.Graphics[];
   satellitesList?: PIXI.Graphics[];
   sparksGraphics?: PIXI.Graphics;
-  sparks?: any[];
+  sparks?: Spark[];
   glowRing: PIXI.Graphics;
   baseHeight: number;
   tier: number;
@@ -146,7 +154,6 @@ interface NodeContainerData {
 }
 
 export default function GameMap({
-  isDemoMode,
   nodes,
   connections,
   selectedNodeId,
@@ -163,6 +170,16 @@ export default function GameMap({
   const rebuildRef = useRef<(() => void) | null>(null);
   const updateVisualsRef = useRef<(() => void) | null>(null);
 
+  const callbacksRef = useRef({
+    onSelectNode,
+    onPlaceNode,
+    onConnectNodes,
+  });
+
+  useEffect(() => {
+    callbacksRef.current = { onSelectNode, onPlaceNode, onConnectNodes };
+  }, [onSelectNode, onPlaceNode, onConnectNodes]);
+
   const stateRef = useRef({
     nodes,
     connections,
@@ -175,7 +192,7 @@ export default function GameMap({
   useEffect(() => {
     stateRef.current = { nodes, connections, selectedNodeId, userAddress, pendingTx, agentNodeIds };
     if (rebuildRef.current) rebuildRef.current();
-  }, [nodes, connections, userAddress, agentNodeIds]);
+  }, [nodes, connections, selectedNodeId, userAddress, pendingTx, agentNodeIds]);
 
   useEffect(() => {
     stateRef.current.selectedNodeId = selectedNodeId;
@@ -424,10 +441,10 @@ export default function GameMap({
 
           nodeData.groundPlate.tint = activeColor;
           nodeData.spire.tint = activeColor;
-          nodeData.floatingCore.children.forEach((child: any) => {
-            if (child.tint !== undefined) child.tint = activeColor;
-            if (child.children) {
-               child.children.forEach((c: any) => { if (c.tint !== undefined) c.tint = activeColor; });
+          nodeData.floatingCore.children.forEach((child) => {
+            if ("tint" in child) (child as PIXI.Graphics).tint = activeColor;
+            if ("children" in child && child.children) {
+               child.children.forEach((c) => { if ("tint" in c) (c as PIXI.Graphics).tint = activeColor; });
             }
           });
           if (nodeData.sparksGraphics) nodeData.sparksGraphics.tint = activeColor;
@@ -576,8 +593,6 @@ export default function GameMap({
         // Build 3D Parametric Spire Nodes
         currentNodes.forEach((node) => {
           const isAgentOwned = currentAgentNodeIds?.has(node.id);
-          const color = node.id === currentSelectedId ? 0xf59e0b : 
-                       (node.owner.toLowerCase() === currentUserAddr?.toLowerCase() ? 0x10b881 : (isAgentOwned ? 0x8b5cf6 : 0x3b82f6));
 
           const seed = parseInt(node.id.substring(node.id.length - 8), 16) || Math.abs(node.x * 17 + node.y * 31);
           const rand = (s: number) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
@@ -661,7 +676,7 @@ export default function GameMap({
 
           // Sparks Emitter (Tier 3)
           let sparksGraphics: PIXI.Graphics | undefined;
-          let sparks: any[] | undefined;
+          let sparks: Spark[] | undefined;
           if (tier === 3) {
              sparksGraphics = new PIXI.Graphics();
              sparks = Array.from({length: 8}).map(() => ({
@@ -779,9 +794,9 @@ export default function GameMap({
               activeSelectedNode.owner.toLowerCase() === activeUserAddr?.toLowerCase() &&
               activeSelectedId !== node.id
             ) {
-              onConnectNodes(activeSelectedId!, node.id);
+              callbacksRef.current.onConnectNodes(activeSelectedId!, node.id);
             } else {
-              onSelectNode(activeSelectedId === node.id ? null : node.id);
+              callbacksRef.current.onSelectNode(activeSelectedId === node.id ? null : node.id);
             }
           });
 
@@ -824,8 +839,8 @@ export default function GameMap({
 
         const nodeAtClick = activeNodes.find((n) => n.x === snapX && n.y === snapY);
         if (!nodeAtClick) {
-          if (activeSelectedId) onSelectNode(null);
-          else if (Math.abs(snapX) < 40 && Math.abs(snapY) < 40) onPlaceNode(snapX, snapY);
+          if (activeSelectedId) callbacksRef.current.onSelectNode(null);
+          else if (Math.abs(snapX) < 40 && Math.abs(snapY) < 40) callbacksRef.current.onPlaceNode(snapX, snapY);
         }
       });
 
@@ -986,7 +1001,7 @@ export default function GameMap({
         app.destroy(true);
       }
     };
-  }, [isDemoMode]);
+  }, []);
 
   return (
     <div

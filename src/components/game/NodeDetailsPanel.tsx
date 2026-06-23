@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { GameNode, GameConnection } from "../GameMap";
 
 interface NodeDetailsPanelProps {
@@ -11,7 +11,13 @@ interface NodeDetailsPanelProps {
   pendingRequestsToSelected: GameConnection[];
   placementCoords: { x: number; y: number } | null;
   setPlacementCoords: (coords: { x: number; y: number } | null) => void;
-  calculateDynamicFee: (from: GameNode, to: GameNode) => any;
+  calculateDynamicFee: (from: GameNode, to: GameNode) => {
+    total: number;
+    baseFee: number;
+    connPremium: number;
+    distPremium: number;
+    distance: number;
+  };
   executeClaimRewards: (nodeKeys: string[]) => void;
   executeRequestConnection: () => void;
   executeApproveConnection: (fromId: string) => void;
@@ -42,6 +48,15 @@ export function NodeDetailsPanel({
   executeBoostConnection,
   executePlaceNode,
 }: NodeDetailsPanelProps) {
+  const [currentTime, setCurrentTime] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Math.floor(Date.now() / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <>
       {selectedNode && (
@@ -212,7 +227,7 @@ export function NodeDetailsPanel({
 
                     const lastNurtured = conn.lastNurturedAt || 0;
                     const expiryTime = lastNurtured + 86400; // 1 day
-                    const timeLeft = expiryTime - Date.now() / 1000;
+                    const timeLeft = expiryTime - currentTime;
                     const isDecayed = timeLeft <= 0;
 
                     const distance = Math.abs(otherNode.x - selectedNode.x) + Math.abs(otherNode.y - selectedNode.y);
