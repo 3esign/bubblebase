@@ -64,7 +64,9 @@ const drawPrism = (
   z1: number,
   ox: number = 0,
   oy: number = 0,
-  lineAlpha: number = 0.4
+  lineAlpha: number = 0.8,
+  baseColor: number = 0x1e293b,
+  highlightColor: number = 0x3b82f6
 ) => {
   const b1 = project(-bw + ox, -bw + oy, z0); // North
   const b2 = project(bw + ox, -bw + oy, z0);  // East
@@ -76,28 +78,28 @@ const drawPrism = (
   const t3 = project(tw + ox, tw + oy, z1);
   const t4 = project(-tw + ox, tw + oy, z1);
 
+  // Solid Sci-Fi Faces
+  // Right Face (East/South) - Medium Light
   graphics.poly([b2.x, b2.y, b3.x, b3.y, t3.x, t3.y, t2.x, t2.y], true);
-  graphics.fill({ color: 0xffffff, alpha: 0.12 });
+  graphics.fill({ color: baseColor, alpha: 0.95 });
 
+  // Left Face (West/South) - Shadow
   graphics.poly([b3.x, b3.y, b4.x, b4.y, t4.x, t4.y, t3.x, t3.y], true);
-  graphics.fill({ color: 0xffffff, alpha: 0.18 });
+  graphics.fill({ color: 0x0f172a, alpha: 0.95 });
 
-  graphics.poly([b4.x, b4.y, b1.x, b1.y, t1.x, t1.y, t4.x, t4.y], true);
-  graphics.fill({ color: 0xffffff, alpha: 0.05 });
+  // Top Cap - Brightest
+  graphics.poly([t1.x, t1.y, t2.x, t2.y, t3.x, t3.y, t4.x, t4.y], true);
+  graphics.fill({ color: 0x334155, alpha: 1.0 });
 
-  graphics.poly([b1.x, b1.y, b2.x, b2.y, t2.x, t2.y, t1.x, t1.y], true);
-  graphics.fill({ color: 0xffffff, alpha: 0.08 });
-
-  // Columns
+  // Neon Edge Accents
   graphics.moveTo(b1.x, b1.y); graphics.lineTo(t1.x, t1.y);
   graphics.moveTo(b2.x, b2.y); graphics.lineTo(t2.x, t2.y);
   graphics.moveTo(b3.x, b3.y); graphics.lineTo(t3.x, t3.y);
   graphics.moveTo(b4.x, b4.y); graphics.lineTo(t4.x, t4.y);
 
-  // Caps
   graphics.poly([b1.x, b1.y, b2.x, b2.y, b3.x, b3.y, b4.x, b4.y], true);
   graphics.poly([t1.x, t1.y, t2.x, t2.y, t3.x, t3.y, t4.x, t4.y], true);
-  graphics.stroke({ width: 1, color: 0xffffff, alpha: lineAlpha });
+  graphics.stroke({ width: 1.5, color: highlightColor, alpha: lineAlpha });
 
   // Power conduits (vertical center lines for high-tier detail)
   if (bw > 6) {
@@ -109,7 +111,7 @@ const drawPrism = (
     const tcSW = project(ox, tw + oy, z1);
     graphics.moveTo(bcSW.x, bcSW.y); graphics.lineTo(tcSW.x, tcSW.y);
 
-    graphics.stroke({ width: 1.2, color: 0xffffff, alpha: lineAlpha * 1.5 });
+    graphics.stroke({ width: 1, color: highlightColor, alpha: lineAlpha * 1.5 });
   }
 };
 
@@ -221,6 +223,24 @@ export default function GameMap({
       world.y = window.innerHeight / 2;
       world.scale.set(0.65); // Uniform scale for zooming
       app.stage.addChild(world);
+
+      // Ambient Environment Particles Container (Data-dust / Stars)
+      const ambientContainer = new PIXI.Container();
+      world.addChild(ambientContainer);
+      const ambientGraphics = new PIXI.Graphics();
+      ambientContainer.addChild(ambientGraphics);
+
+      const ambientParticles = Array.from({length: 250}).map(() => ({
+        x: (Math.random() - 0.5) * 6000,
+        y: (Math.random() - 0.5) * 6000,
+        z: Math.random() * 150 - 50,
+        size: Math.random() * 1.5 + 0.5,
+        speedY: (Math.random() * 0.3 - 0.15),
+        speedX: (Math.random() * 0.3 - 0.15),
+        alphaOffset: Math.random() * Math.PI * 2,
+        alphaSpeed: Math.random() * 0.02 + 0.01,
+        color: Math.random() > 0.5 ? 0x00d2ff : 0x8b5cf6
+      }));
 
       const gridGraphics = new PIXI.Graphics();
       world.addChild(gridGraphics);
@@ -506,11 +526,15 @@ export default function GameMap({
           } else {
             const mult = (conn.boostMultiplier || 100) / 100;
             
-            // Explicit Sharp Wires (Subtle)
+            // Elevated Sci-Fi Highway Base
             explicitLinks.moveTo(p1.x, p1.y); explicitLinks.lineTo(p2.x, p2.y);
-            explicitLinks.stroke({ width: 3 * mult, color: 0x3b82f6, alpha: 0.1 * mult });
+            explicitLinks.stroke({ width: 12 * mult, color: 0x050814, alpha: 0.9 });
+            
+            // Glowing neon lanes
             explicitLinks.moveTo(p1.x, p1.y); explicitLinks.lineTo(p2.x, p2.y);
-            explicitLinks.stroke({ width: 1 * mult, color: 0xb3e5fc, alpha: 0.25 });
+            explicitLinks.stroke({ width: 4 * mult, color: 0x3b82f6, alpha: 0.5 * mult });
+            explicitLinks.moveTo(p1.x, p1.y); explicitLinks.lineTo(p2.x, p2.y);
+            explicitLinks.stroke({ width: 1.5 * mult, color: 0xb3e5fc, alpha: 0.9 });
             
             // Blurred Heat Map Congestion Lines
             heatMapLinks.moveTo(p1.x, p1.y); heatMapLinks.lineTo(p2.x, p2.y);
@@ -573,58 +597,65 @@ export default function GameMap({
           nodeContainer.x = nodePos.x;
           nodeContainer.y = nodePos.y;
 
-          // Ground Plate Foundation
-          const groundPlate = new PIXI.Graphics();
-          const s1 = project(-baseW * 1.4, -baseW * 1.4, 0);
-          const s2 = project(baseW * 1.4, -baseW * 1.4, 0);
-          const s3 = project(baseW * 1.4, baseW * 1.4, 0);
-          const s4 = project(-baseW * 1.4, baseW * 1.4, 0);
-          groundPlate.poly([s1.x, s1.y, s2.x, s2.y, s3.x, s3.y, s4.x, s4.y], true);
-          groundPlate.fill({ color: 0x070b1e, alpha: 0.7 });
-          groundPlate.stroke({ width: 1, color: 0xffffff, alpha: 0.35 });
+          const isUserOwned = node.owner.toLowerCase() === currentUserAddr?.toLowerCase();
+          const isSelected = node.id === currentSelectedId;
+          const highlightColor = isSelected ? 0xf59e0b : isUserOwned ? 0x10b881 : isAgentOwned ? 0x8b5cf6 : 0x3b82f6;
+          const baseColor = isUserOwned ? 0x1e293b : isAgentOwned ? 0x1e1b4b : 0x0f172a; 
 
-          if (tier >= 1) {
-            const m1 = project(-baseW * 1.15, -baseW * 1.15, 4);
-            const m2 = project(baseW * 1.15, -baseW * 1.15, 4);
-            const m3 = project(baseW * 1.15, baseW * 1.15, 4);
-            const m4 = project(-baseW * 1.15, baseW * 1.15, 4);
-            groundPlate.poly([m1.x, m1.y, m2.x, m2.y, m3.x, m3.y, m4.x, m4.y], true);
-            groundPlate.fill({ color: 0x0b112c, alpha: 0.85 });
-            groundPlate.stroke({ width: 1.5, color: 0xffffff, alpha: 0.5 });
+          // Ground Plate Foundation (High-tech geometric plating)
+          const groundPlate = new PIXI.Graphics();
+          const s1 = project(-baseW * 1.8, -baseW * 1.8, 0);
+          const s2 = project(baseW * 1.8, -baseW * 1.8, 0);
+          const s3 = project(baseW * 1.8, baseW * 1.8, 0);
+          const s4 = project(-baseW * 1.8, baseW * 1.8, 0);
+          groundPlate.poly([s1.x, s1.y, s2.x, s2.y, s3.x, s3.y, s4.x, s4.y], true);
+          groundPlate.fill({ color: 0x050814, alpha: 0.9 });
+          groundPlate.stroke({ width: 2, color: highlightColor, alpha: 0.3 });
+
+          // Socket Base
+          drawPrism(groundPlate, baseW * 1.4, baseW * 1.4, 0, 4, 0, 0, 0.5, 0x0f172a, highlightColor);
+          
+          // Defensive Data-Walls for Tier 2+
+          if (tier >= 2) {
+            const wallDist = baseW * 1.6;
+            drawPrism(groundPlate, baseW * 0.4, baseW * 0.2, 0, 15, wallDist, 0, 0.4, 0x1e293b, highlightColor);
+            drawPrism(groundPlate, baseW * 0.4, baseW * 0.2, 0, 15, -wallDist, 0, 0.4, 0x1e293b, highlightColor);
+            drawPrism(groundPlate, baseW * 0.4, baseW * 0.2, 0, 15, 0, wallDist, 0.4, 0x1e293b, highlightColor);
+            drawPrism(groundPlate, baseW * 0.4, baseW * 0.2, 0, 15, 0, -wallDist, 0.4, 0x1e293b, highlightColor);
           }
           nodeContainer.addChild(groundPlate);
 
           const glowRing = new PIXI.Graphics();
           glowRing.ellipse(0, 0, baseW * 2, baseW * 2 * ISO_PITCH);
-          glowRing.stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+          glowRing.stroke({ width: 2, color: highlightColor, alpha: 0.8 });
           glowRing.visible = false;
           nodeContainer.addChild(glowRing);
 
-          // Tower Obelisk Parametric Segments
+          // Tower Obelisk Parametric Segments (Solid Sci-Fi Architecture)
           const spire = new PIXI.Graphics();
           if (tier === 0) {
-            drawPrism(spire, baseW, baseW * 0.45, 4, height);
+            drawPrism(spire, baseW, baseW * 0.45, 4, height, 0, 0, 0.8, baseColor, highlightColor);
           } else if (tier === 1) {
-            drawPrism(spire, baseW, baseW * 0.7, 4, height * 0.55);
-            drawPrism(spire, baseW * 0.6, baseW * 0.35, height * 0.55, height);
+            drawPrism(spire, baseW, baseW * 0.7, 4, height * 0.55, 0, 0, 0.8, baseColor, highlightColor);
+            drawPrism(spire, baseW * 0.6, baseW * 0.35, height * 0.55, height, 0, 0, 0.8, baseColor, highlightColor);
           } else if (tier === 2) {
-            drawPrism(spire, baseW, baseW * 0.8, 4, height * 0.35);
-            drawPrism(spire, baseW * 0.7, baseW * 0.5, height * 0.35, height * 0.7);
-            drawPrism(spire, baseW * 0.4, baseW * 0.2, height * 0.7, height);
+            drawPrism(spire, baseW, baseW * 0.8, 4, height * 0.35, 0, 0, 0.8, baseColor, highlightColor);
+            drawPrism(spire, baseW * 0.7, baseW * 0.5, height * 0.35, height * 0.7, 0, 0, 0.8, baseColor, highlightColor);
+            drawPrism(spire, baseW * 0.4, baseW * 0.2, height * 0.7, height, 0, 0, 0.8, baseColor, highlightColor);
             const cpDist = baseW * 1.3;
-            drawPrism(spire, 3, 1.5, 4, 25, cpDist, cpDist);
-            drawPrism(spire, 3, 1.5, 4, 25, -cpDist, cpDist);
-            drawPrism(spire, 3, 1.5, 4, 25, cpDist, -cpDist);
-            drawPrism(spire, 3, 1.5, 4, 25, -cpDist, -cpDist);
+            drawPrism(spire, 3, 1.5, 4, 25, cpDist, cpDist, 0.6, baseColor, highlightColor);
+            drawPrism(spire, 3, 1.5, 4, 25, -cpDist, cpDist, 0.6, baseColor, highlightColor);
+            drawPrism(spire, 3, 1.5, 4, 25, cpDist, -cpDist, 0.6, baseColor, highlightColor);
+            drawPrism(spire, 3, 1.5, 4, 25, -cpDist, -cpDist, 0.6, baseColor, highlightColor);
           } else if (tier === 3) {
-            drawPrism(spire, baseW, baseW * 0.85, 4, height * 0.3);
-            drawPrism(spire, baseW * 0.75, baseW * 0.55, height * 0.3, height * 0.65);
-            drawPrism(spire, baseW * 0.5, baseW * 0.25, height * 0.65, height);
+            drawPrism(spire, baseW, baseW * 0.85, 4, height * 0.3, 0, 0, 0.9, baseColor, highlightColor);
+            drawPrism(spire, baseW * 0.75, baseW * 0.55, height * 0.3, height * 0.65, 0, 0, 0.9, baseColor, highlightColor);
+            drawPrism(spire, baseW * 0.5, baseW * 0.25, height * 0.65, height, 0, 0, 0.9, baseColor, highlightColor);
             const cpDist = baseW * 1.4;
-            drawPrism(spire, 5, 2, 4, 40, cpDist, cpDist);
-            drawPrism(spire, 5, 2, 4, 40, -cpDist, cpDist);
-            drawPrism(spire, 5, 2, 4, 40, cpDist, -cpDist);
-            drawPrism(spire, 5, 2, 4, 40, -cpDist, -cpDist);
+            drawPrism(spire, 5, 2, 4, 40, cpDist, cpDist, 0.7, baseColor, highlightColor);
+            drawPrism(spire, 5, 2, 4, 40, -cpDist, cpDist, 0.7, baseColor, highlightColor);
+            drawPrism(spire, 5, 2, 4, 40, cpDist, -cpDist, 0.7, baseColor, highlightColor);
+            drawPrism(spire, 5, 2, 4, 40, -cpDist, -cpDist, 0.7, baseColor, highlightColor);
           }
           nodeContainer.addChild(spire);
 
@@ -841,6 +872,22 @@ export default function GameMap({
       app.ticker.add((ticker) => {
         time += (ticker?.deltaTime || 1) * 0.025;
 
+        // Ambient Environment Particles Update
+        ambientGraphics.clear();
+        ambientParticles.forEach(p => {
+          p.x += p.speedX * (ticker?.deltaTime || 1);
+          p.y += p.speedY * (ticker?.deltaTime || 1);
+          if (p.x > 3000) p.x = -3000;
+          if (p.x < -3000) p.x = 3000;
+          if (p.y > 3000) p.y = -3000;
+          if (p.y < -3000) p.y = 3000;
+          
+          const alpha = (0.2 + Math.sin(time + p.alphaOffset) * 0.2);
+          const pos = project(p.x, p.y, p.z);
+          ambientGraphics.circle(pos.x, pos.y, p.size);
+          ambientGraphics.fill({ color: p.color, alpha: alpha });
+        });
+
         // Dynamic crossfade based on zoom level (initial scale is 0.65)
         // At default zoom: Show only Heatmap. Lines fade in when zooming close.
         const zoom = world.scale.x;
@@ -904,11 +951,22 @@ export default function GameMap({
           const px = pulse.fromX + (pulse.toX - pulse.fromX) * pulse.progress;
           const py = pulse.fromY + (pulse.toY - pulse.fromY) * pulse.progress;
 
-          explicitPulses.circle(px, py, 4);
-          explicitPulses.fill({ color: pulse.color, alpha: 0.15 });
+          // Draw vehicle body (Capsule)
+          explicitPulses.circle(px, py, 2.5);
+          explicitPulses.fill({ color: 0xffffff, alpha: 0.95 });
           
-          explicitPulses.circle(px, py, 1.5);
-          explicitPulses.fill({ color: 0xffffff, alpha: 0.3 });
+          // Outer vehicle glow
+          explicitPulses.circle(px, py, 5);
+          explicitPulses.fill({ color: pulse.color, alpha: 0.4 });
+          
+          // Draw trailing data tail
+          const tailLength = Math.min(pulse.progress, 0.08); // Trailing length
+          const trailPx = pulse.fromX + (pulse.toX - pulse.fromX) * (pulse.progress - tailLength);
+          const trailPy = pulse.fromY + (pulse.toY - pulse.fromY) * (pulse.progress - tailLength);
+          
+          explicitPulses.moveTo(trailPx, trailPy);
+          explicitPulses.lineTo(px, py);
+          explicitPulses.stroke({ width: 3, color: pulse.color, alpha: 0.7 });
         });
       });
 
