@@ -12,6 +12,7 @@ interface SimulationPanelProps {
   setSpeed: (val: number) => void;
   runTicks: (n: number) => void;
   setAgents: (agents: Agent[]) => void;
+  onRestart: () => void;
 }
 
 export function SimulationPanel({
@@ -23,7 +24,8 @@ export function SimulationPanel({
   speed,
   setSpeed,
   runTicks,
-  setAgents
+  setAgents,
+  onRestart
 }: SimulationPanelProps) {
   
   const handleAgentDriverChange = (index: number, type: 'math' | 'ai') => {
@@ -41,7 +43,7 @@ export function SimulationPanel({
   const latestMetric = metrics[metrics.length - 1];
 
   return (
-    <div className="absolute top-32 left-6 w-80 flex flex-col gap-4 pointer-events-auto max-h-[80vh] overflow-y-auto pr-1">
+    <div className="absolute top-32 left-6 w-80 flex flex-col gap-4 pointer-events-auto max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
       <div className="glass-panel p-5 rounded-2xl flex flex-col gap-4 border-blue-500/30">
         <div className="flex flex-col">
           <span className="text-xs text-blue-400 uppercase tracking-widest font-bold">
@@ -59,6 +61,12 @@ export function SimulationPanel({
             className={`flex-1 py-2 rounded-xl font-bold text-xs uppercase tracking-wider glass-button ${isRunning ? 'glass-button-danger' : 'glass-button-success'}`}
           >
             {isRunning ? "Pause" : "Start"}
+          </button>
+          <button
+            onClick={onRestart}
+            className="flex-1 py-2 rounded-xl font-bold text-xs uppercase tracking-wider glass-button hover:bg-white/10"
+          >
+            Restart
           </button>
           <button
             onClick={() => runTicks(10)}

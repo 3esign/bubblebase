@@ -13,18 +13,20 @@ import { TransactionToast } from "../components/game/TransactionToast";
 import { NodeDetailsPanel } from "../components/game/NodeDetailsPanel";
 import { SimulationPanel } from "../components/SimulationPanel";
 import { MacroSimulationPanel } from "../components/MacroSimulationPanel";
-import { MOCK_AGENT_ADDRESSES } from "../lib/mockData";
+import { MOCK_AGENT_ADDRESSES, generateMockFormations } from "../lib/mockData";
 
 const GameMap = dynamic(() => import("../components/GameMap"), { ssr: false });
 
 // 1. Initial Static Simulation States defined outside the component to remain pure
+const { nodes: initialMockNodes, connections: initialMockConns } = generateMockFormations();
+
 const initialWorld: WorldState = {
   tick: 0,
   timeSeconds: 1782176240, // Static baseline epoch timestamp
-  nodes: [],
-  connections: [],
+  nodes: initialMockNodes,
+  connections: initialMockConns,
   rewardPerConnection: 0,
-  totalConnections: 0,
+  totalConnections: initialMockConns.length,
   nodeRewardDebt: new Map(),
   nodePendingRewards: new Map(),
 };
@@ -104,9 +106,18 @@ export default function Home() {
       if (appMode === "live") {
         setNodes([]);
         setConnections([]);
+      } else if (appMode === "demo") {
+        setNodes([...initialWorld.nodes]);
+        setConnections([...initialWorld.connections]);
       }
     }
   }, [appMode, setSimIsRunning, setSimWorld, setSimAgents, setNodes, setConnections]);
+
+  const handleRestartSimulation = () => {
+    setSimIsRunning(false);
+    setSimWorld({ ...initialWorld, timeSeconds: Math.floor(Date.now() / 1000) });
+    setSimAgents(initialAgents);
+  };
 
   const agentNodeIds = useMemo(() => {
     if (appMode !== "simulation") return new Set<string>();
@@ -278,6 +289,7 @@ BubbleBase Civilization Game - 3esign - 2026. All rights reserved.
             runTicks={runTicks}
             setWorld={setSimWorld}
             setAgents={setSimAgents}
+            onRestart={handleRestartSimulation}
           />
         ) : (
           <SimulationPanel
@@ -290,6 +302,7 @@ BubbleBase Civilization Game - 3esign - 2026. All rights reserved.
             setSpeed={setSimSpeed}
             runTicks={runTicks}
             setAgents={setSimAgents}
+            onRestart={handleRestartSimulation}
           />
         )
       )}

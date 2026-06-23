@@ -13,6 +13,7 @@ interface MacroSimulationPanelProps {
   runTicks: (n: number) => void;
   setWorld: React.Dispatch<React.SetStateAction<WorldState>>;
   setAgents: React.Dispatch<React.SetStateAction<Agent[]>>;
+  onRestart: () => void;
 }
 
 export function MacroSimulationPanel({
@@ -25,6 +26,7 @@ export function MacroSimulationPanel({
   runTicks,
   setWorld,
   setAgents,
+  onRestart,
 }: MacroSimulationPanelProps) {
   // Configurable parameter inputs
   const currentParams = useMemo(() => {
@@ -125,7 +127,7 @@ export function MacroSimulationPanel({
   }, [agents, world.nodes]);
 
   return (
-    <div className="absolute top-28 left-6 w-96 flex flex-col gap-4 pointer-events-auto max-h-[85vh] overflow-y-auto pr-1 z-40">
+    <div className="absolute top-28 left-6 w-96 flex flex-col gap-4 pointer-events-auto max-h-[calc(100vh-320px)] overflow-y-auto pr-1 z-40">
       
       {/* Simulation Master Controls */}
       <div className="glass-panel p-5 rounded-2xl flex flex-col gap-4 border-emerald-500/30">
@@ -143,21 +145,26 @@ export function MacroSimulationPanel({
           </span>
         </div>
 
-        <div className="flex gap-2">
           <button
             onClick={() => setIsRunning(!isRunning)}
             className={`flex-1 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider glass-button ${
               isRunning ? "glass-button-danger" : "glass-button-success"
             }`}
           >
-            {isRunning ? "Pause Engine" : "Run Live Simulation"}
+            {isRunning ? "Pause" : "Live Run"}
+          </button>
+          <button
+            onClick={onRestart}
+            className="px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider glass-button hover:bg-white/10"
+          >
+            Restart
           </button>
           <button
             onClick={() => runTicks(25)}
             className="px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider glass-button"
             disabled={isRunning}
           >
-            +25 Ticks
+            +25
           </button>
           <button
             onClick={() => runTicks(100)}
